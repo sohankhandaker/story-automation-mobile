@@ -1,0 +1,4 @@
+-keep class io.flutter.** { *; }
+-keep class com.google.** { *; }
+-dontwarn io.flutter.**
+-dontwarn javax.lang.model.element.Modifier
