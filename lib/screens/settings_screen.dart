@@ -28,14 +28,15 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
   @override
   void initState() {
     super.initState();
-    final user = ref.read(authProvider).user;
-    if (user?.githubUsername != null) _githubCtrl.text = user!.githubUsername!;
-    if (user?.ghToken != null) _ghTokenCtrl.text = user!.ghToken!;
-    if (user?.ghOwner != null) _ghOwnerCtrl.text = user!.ghOwner!;
-    if (user?.ghRepo != null) _ghRepoCtrl.text = user!.ghRepo!;
-    if (user?.ghProjectNumber != null) {
-      _ghProjectNumberCtrl.text = user!.ghProjectNumber.toString();
-    }
+    _populateFromUser(ref.read(authProvider).user);
+  }
+
+  void _populateFromUser(User? user) {
+    _githubCtrl.text = user?.githubUsername ?? '';
+    _ghTokenCtrl.text = user?.ghToken ?? '';
+    _ghOwnerCtrl.text = user?.ghOwner ?? '';
+    _ghRepoCtrl.text = user?.ghRepo ?? '';
+    _ghProjectNumberCtrl.text = user?.ghProjectNumber?.toString() ?? '';
   }
 
   @override
@@ -149,6 +150,13 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     final auth = ref.watch(authProvider);
     final user = auth.user;
     final cs = Theme.of(context).colorScheme;
+
+    // Re-sync controllers whenever the logged-in user changes (e.g. after re-login)
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      if (prev?.user?.id != next.user?.id) {
+        _populateFromUser(next.user);
+      }
+    });
 
     return ListView(
       physics: const ClampingScrollPhysics(),
@@ -496,17 +504,19 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
         const Gap(12),
 
         // ── Sign out ──────────────────────────────────────────────
-        OutlinedButton.icon(
-          onPressed: _logout,
-          icon:
-              const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
-          label: const Text('Sign Out',
-              style: TextStyle(color: Colors.red)),
-          style: OutlinedButton.styleFrom(
-            side: const BorderSide(color: Colors.red),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+        SizedBox(
+          height: 52,
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
+            label: const Text('Sign Out',
+                style: TextStyle(color: Colors.red, fontSize: 15)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.red),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
           ),
         ),
       ],
