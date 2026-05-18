@@ -18,14 +18,23 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
   final _reviewerNameCtrl = TextEditingController();
   final _reviewerUserCtrl = TextEditingController();
   final _reviewerEmailCtrl = TextEditingController();
+  final _ghTokenCtrl = TextEditingController();
+  final _ghOwnerCtrl = TextEditingController();
+  final _ghRepoCtrl = TextEditingController();
+  final _ghProjectNumberCtrl = TextEditingController();
   bool _saving = false;
+  bool _ghTokenVisible = false;
 
   @override
   void initState() {
     super.initState();
     final user = ref.read(authProvider).user;
-    if (user?.githubUsername != null) {
-      _githubCtrl.text = user!.githubUsername!;
+    if (user?.githubUsername != null) _githubCtrl.text = user!.githubUsername!;
+    if (user?.ghToken != null) _ghTokenCtrl.text = user!.ghToken!;
+    if (user?.ghOwner != null) _ghOwnerCtrl.text = user!.ghOwner!;
+    if (user?.ghRepo != null) _ghRepoCtrl.text = user!.ghRepo!;
+    if (user?.ghProjectNumber != null) {
+      _ghProjectNumberCtrl.text = user!.ghProjectNumber.toString();
     }
   }
 
@@ -35,6 +44,10 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     _reviewerNameCtrl.dispose();
     _reviewerUserCtrl.dispose();
     _reviewerEmailCtrl.dispose();
+    _ghTokenCtrl.dispose();
+    _ghOwnerCtrl.dispose();
+    _ghRepoCtrl.dispose();
+    _ghProjectNumberCtrl.dispose();
     super.dispose();
   }
 
@@ -43,9 +56,14 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    final projectNumber = int.tryParse(_ghProjectNumberCtrl.text.trim());
     await ref.read(authProvider.notifier).updateSettings(
           _githubCtrl.text.trim().isEmpty ? null : _githubCtrl.text.trim(),
           _reviewers.map((r) => r.toJson()).toList(),
+          ghToken: _ghTokenCtrl.text.trim(),
+          ghOwner: _ghOwnerCtrl.text.trim(),
+          ghRepo: _ghRepoCtrl.text.trim(),
+          ghProjectNumber: projectNumber,
         );
     if (mounted) {
       setState(() => _saving = false);
@@ -70,6 +88,10 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     ref.read(authProvider.notifier).updateSettings(
           _githubCtrl.text.trim().isEmpty ? null : _githubCtrl.text.trim(),
           current.map((r) => r.toJson()).toList(),
+          ghToken: _ghTokenCtrl.text.trim(),
+          ghOwner: _ghOwnerCtrl.text.trim(),
+          ghRepo: _ghRepoCtrl.text.trim(),
+          ghProjectNumber: int.tryParse(_ghProjectNumberCtrl.text.trim()),
         );
     _reviewerNameCtrl.clear();
     _reviewerUserCtrl.clear();
@@ -83,6 +105,10 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     ref.read(authProvider.notifier).updateSettings(
           _githubCtrl.text.trim().isEmpty ? null : _githubCtrl.text.trim(),
           current.map((r) => r.toJson()).toList(),
+          ghToken: _ghTokenCtrl.text.trim(),
+          ghOwner: _ghOwnerCtrl.text.trim(),
+          ghRepo: _ghRepoCtrl.text.trim(),
+          ghProjectNumber: int.tryParse(_ghProjectNumberCtrl.text.trim()),
         );
     setState(() {});
   }
@@ -219,6 +245,86 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
                           const BorderSide(color: Color(0xFFD8E8FF)),
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Gap(14),
+
+        // ── GitHub Project ────────────────────────────────────────
+        _SectionCard(
+          title: 'GitHub Project',
+          icon: Icons.dashboard_customize_rounded,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connect your own GitHub project board. Leave empty to use the default workspace project.',
+                  style: TextStyle(
+                      color: cs.onSurfaceVariant, fontSize: 13, height: 1.4),
+                ),
+                const Gap(16),
+                StatefulBuilder(
+                  builder: (context, setLocal) => TextField(
+                    controller: _ghTokenCtrl,
+                    obscureText: !_ghTokenVisible,
+                    decoration: InputDecoration(
+                      labelText: 'GitHub Token (PAT)',
+                      hintText: 'ghp_...',
+                      prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _ghTokenVisible
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() => _ghTokenVisible = !_ghTokenVisible);
+                        },
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF7FAFF),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFD8E8FF)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFD8E8FF)),
+                      ),
+                    ),
+                  ),
+                ),
+                const Gap(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _FormField(
+                        controller: _ghOwnerCtrl,
+                        label: 'Owner / Org',
+                        icon: Icons.business_rounded,
+                      ),
+                    ),
+                    const Gap(10),
+                    Expanded(
+                      child: _FormField(
+                        controller: _ghRepoCtrl,
+                        label: 'Repository',
+                        icon: Icons.folder_rounded,
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                _FormField(
+                  controller: _ghProjectNumberCtrl,
+                  label: 'Project Number',
+                  icon: Icons.tag_rounded,
+                  keyboardType: TextInputType.number,
                 ),
               ],
             ),

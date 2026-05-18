@@ -67,11 +67,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = AuthState(user: user);
   }
 
-  Future<void> updateSettings(String? githubUsername, List<Map<String, dynamic>> reviewerList) async {
+  Future<void> updateSettings(
+    String? githubUsername,
+    List<Map<String, dynamic>> reviewerList, {
+    String? ghToken,
+    String? ghOwner,
+    String? ghRepo,
+    int? ghProjectNumber,
+  }) async {
     try {
       final resp = await ApiClient.dio.patch('/api/auth/settings', data: {
         if (githubUsername != null) 'github_username': githubUsername,
         'reviewer_list': reviewerList,
+        'gh_token': ghToken ?? '',
+        'gh_owner': ghOwner ?? '',
+        'gh_repo': ghRepo ?? '',
+        if (ghProjectNumber != null) 'gh_project_number': ghProjectNumber,
       });
       final user = User.fromJson(resp.data as Map<String, dynamic>);
       await AppStorage.saveUser(jsonEncode(resp.data));

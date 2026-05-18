@@ -76,8 +76,8 @@ class Task {
             .toList(),
         maxReviewCycles: j['max_review_cycles'] as int? ?? 5,
         currentReviewCycle: j['current_review_cycle'] as int? ?? 0,
-        createdAt: DateTime.parse(j['created_at'] as String),
-        updatedAt: DateTime.parse(j['updated_at'] as String),
+        createdAt: DateTime.parse('${j['created_at']}Z').toLocal(),
+        updatedAt: DateTime.parse('${j['updated_at']}Z').toLocal(),
       );
 
   bool get isInProgress => status == 'In Progress';

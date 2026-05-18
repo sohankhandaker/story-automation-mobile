@@ -24,6 +24,10 @@ class User {
   final String email;
   final String? githubUsername;
   final List<ReviewerItem> reviewerList;
+  final String? ghToken;
+  final String? ghOwner;
+  final String? ghRepo;
+  final int? ghProjectNumber;
 
   User({
     required this.id,
@@ -31,6 +35,10 @@ class User {
     required this.email,
     this.githubUsername,
     required this.reviewerList,
+    this.ghToken,
+    this.ghOwner,
+    this.ghRepo,
+    this.ghProjectNumber,
   });
 
   factory User.fromJson(Map<String, dynamic> j) => User(
@@ -41,5 +49,9 @@ class User {
         reviewerList: (j['reviewer_list'] as List<dynamic>? ?? [])
             .map((e) => ReviewerItem.fromJson(e as Map<String, dynamic>))
             .toList(),
+        ghToken: j['gh_token'] as String?,
+        ghOwner: j['gh_owner'] as String?,
+        ghRepo: j['gh_repo'] as String?,
+        ghProjectNumber: j['gh_project_number'] as int?,
       );
 }
