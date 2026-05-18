@@ -79,9 +79,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final resp = await ApiClient.dio.patch('/api/auth/settings', data: {
         if (githubUsername != null) 'github_username': githubUsername,
         'reviewer_list': reviewerList,
-        'gh_token': ghToken ?? '',
-        'gh_owner': ghOwner ?? '',
-        'gh_repo': ghRepo ?? '',
+        if (ghToken != null && ghToken.isNotEmpty) 'gh_token': ghToken,
+        if (ghOwner != null && ghOwner.isNotEmpty) 'gh_owner': ghOwner,
+        if (ghRepo != null && ghRepo.isNotEmpty) 'gh_repo': ghRepo,
         if (ghProjectNumber != null) 'gh_project_number': ghProjectNumber,
       });
       final user = User.fromJson(resp.data as Map<String, dynamic>);

@@ -57,12 +57,15 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final projectNumber = int.tryParse(_ghProjectNumberCtrl.text.trim());
+    String? tok = _ghTokenCtrl.text.trim().isEmpty ? null : _ghTokenCtrl.text.trim();
+    String? own = _ghOwnerCtrl.text.trim().isEmpty ? null : _ghOwnerCtrl.text.trim();
+    String? rep = _ghRepoCtrl.text.trim().isEmpty ? null : _ghRepoCtrl.text.trim();
     await ref.read(authProvider.notifier).updateSettings(
           _githubCtrl.text.trim().isEmpty ? null : _githubCtrl.text.trim(),
           _reviewers.map((r) => r.toJson()).toList(),
-          ghToken: _ghTokenCtrl.text.trim(),
-          ghOwner: _ghOwnerCtrl.text.trim(),
-          ghRepo: _ghRepoCtrl.text.trim(),
+          ghToken: tok,
+          ghOwner: own,
+          ghRepo: rep,
           ghProjectNumber: projectNumber,
         );
     if (mounted) {
@@ -88,9 +91,9 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     ref.read(authProvider.notifier).updateSettings(
           _githubCtrl.text.trim().isEmpty ? null : _githubCtrl.text.trim(),
           current.map((r) => r.toJson()).toList(),
-          ghToken: _ghTokenCtrl.text.trim(),
-          ghOwner: _ghOwnerCtrl.text.trim(),
-          ghRepo: _ghRepoCtrl.text.trim(),
+          ghToken: _ghTokenCtrl.text.trim().isEmpty ? null : _ghTokenCtrl.text.trim(),
+          ghOwner: _ghOwnerCtrl.text.trim().isEmpty ? null : _ghOwnerCtrl.text.trim(),
+          ghRepo: _ghRepoCtrl.text.trim().isEmpty ? null : _ghRepoCtrl.text.trim(),
           ghProjectNumber: int.tryParse(_ghProjectNumberCtrl.text.trim()),
         );
     _reviewerNameCtrl.clear();
@@ -105,9 +108,9 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     ref.read(authProvider.notifier).updateSettings(
           _githubCtrl.text.trim().isEmpty ? null : _githubCtrl.text.trim(),
           current.map((r) => r.toJson()).toList(),
-          ghToken: _ghTokenCtrl.text.trim(),
-          ghOwner: _ghOwnerCtrl.text.trim(),
-          ghRepo: _ghRepoCtrl.text.trim(),
+          ghToken: _ghTokenCtrl.text.trim().isEmpty ? null : _ghTokenCtrl.text.trim(),
+          ghOwner: _ghOwnerCtrl.text.trim().isEmpty ? null : _ghOwnerCtrl.text.trim(),
+          ghRepo: _ghRepoCtrl.text.trim().isEmpty ? null : _ghRepoCtrl.text.trim(),
           ghProjectNumber: int.tryParse(_ghProjectNumberCtrl.text.trim()),
         );
     setState(() {});
