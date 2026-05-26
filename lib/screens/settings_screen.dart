@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import '../app.dart';
@@ -307,35 +308,48 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
                       color: cs.onSurfaceVariant, fontSize: 13, height: 1.4),
                 ),
                 const Gap(16),
-                StatefulBuilder(
-                  builder: (context, setLocal) => TextField(
-                    controller: _ghTokenCtrl,
-                    obscureText: !_ghTokenVisible,
-                    decoration: InputDecoration(
-                      labelText: 'GitHub Token (PAT)',
-                      hintText: 'ghp_...',
-                      prefixIcon: const Icon(Icons.key_rounded, size: 20),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _ghTokenVisible
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          size: 20,
+                TextField(
+                  controller: _ghTokenCtrl,
+                  obscureText: !_ghTokenVisible,
+                  enableInteractiveSelection: true,
+                  decoration: InputDecoration(
+                    labelText: 'GitHub Token (PAT)',
+                    hintText: 'ghp_...',
+                    prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _ghTokenVisible
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                            size: 20,
+                          ),
+                          tooltip: _ghTokenVisible ? 'Hide' : 'Show',
+                          onPressed: () => setState(() => _ghTokenVisible = !_ghTokenVisible),
                         ),
-                        onPressed: () {
-                          setState(() => _ghTokenVisible = !_ghTokenVisible);
-                        },
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFFF7FAFF),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFD8E8FF)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFD8E8FF)),
-                      ),
+                        IconButton(
+                          icon: const Icon(Icons.content_paste_rounded, size: 20),
+                          tooltip: 'Paste from clipboard',
+                          onPressed: () async {
+                            final data = await Clipboard.getData(Clipboard.kTextPlain);
+                            if (data?.text != null) {
+                              _ghTokenCtrl.text = data!.text!.trim();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF7FAFF),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD8E8FF)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD8E8FF)),
                     ),
                   ),
                 ),

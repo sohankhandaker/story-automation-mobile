@@ -9,6 +9,7 @@ import '../models/task.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/task_card.dart';
 import 'chat_screen.dart';
+import 'notes_screen.dart' show NotesTab, NewNoteSheet;
 import 'settings_screen.dart' show SettingsTab;
 
 // ── Status metadata ───────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: const [
           _HomeTab(),
           _TasksTab(),
+          NotesTab(),
           SettingsTab(),
         ],
       ),
@@ -61,6 +63,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             icon: Icon(Icons.task_outlined),
             selectedIcon: Icon(Icons.task_rounded),
             label: 'Tasks',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.note_alt_outlined),
+            selectedIcon: Icon(Icons.note_alt_rounded),
+            label: 'Notes',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -82,7 +89,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             )
-          : null,
+          : _selectedIndex == 2
+              ? FloatingActionButton.extended(
+                  onPressed: () => showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => const NewNoteSheet(),
+                  ),
+                  backgroundColor: kPrimary,
+                  foregroundColor: Colors.white,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text(
+                    'New Meeting Note',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                )
+              : null,
     );
   }
 
@@ -128,6 +151,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               onPressed: () => ref.read(tasksProvider.notifier).fetchTasks(),
             ),
           ],
+        );
+      case 2:
+        return AppBar(
+          title: const Text('Meeting Notes', style: TextStyle(fontWeight: FontWeight.bold)),
         );
       default:
         return AppBar(

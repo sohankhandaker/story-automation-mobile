@@ -5,24 +5,32 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../app.dart';
 import '../core/api.dart';
+import '../models/user.dart';
+import '../providers/auth_provider.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Phases 1-2 are prep (crawl + analyze), phases 3-9 map to BRD phases 1-7
 const _brdPhaseNames = [
   '',
+  'Crawling Links & Extracting Context',
+  'Analyzing Notes & Building Requirements',
   'Document Control & Executive Summary',
   'Business Context, Vision & Objectives',
   'Product Scope, Capability Map & Value Chain',
   'Stakeholders, Personas & Governance',
   'Business Processes & Functional Requirements',
-  'Non-Functional Requirements, Data, Integrations & Business Rules',
-  'KPIs, Roadmap, Risks, Acceptance Criteria & Checklists',
+  'Non-Functional Requirements, Data & Integrations',
+  'KPIs, Roadmap, Risks & Acceptance Criteria',
 ];
 
 const _statusColors = {
   'Draft': Color(0xFF78909C),
+  'In Progress': Color(0xFF1565C0),
+  'Pending Review': Color(0xFF6A1B9A),
   'In Review': Color(0xFF1E88E5),
   'Changes Requested': Color(0xFFE53935),
   'Approved': Color(0xFF43A047),
@@ -39,6 +47,10 @@ class MeetingNote {
   final int? brdGenerationPhase;
   final String status;
   final int currentVersionNumber;
+  final String? githubIssueUrl;
+  final int? githubIssueNumber;
+  final String? reviewerGithubUsername;
+  final String? reviewerName;
   final DateTime createdAt;
 
   MeetingNote.fromJson(Map<String, dynamic> j)
@@ -50,6 +62,23 @@ class MeetingNote {
         brdGenerationPhase = j['brd_generation_phase'] as int?,
         status = (j['status'] as String?) ?? 'Draft',
         currentVersionNumber = (j['current_version_number'] as int?) ?? 0,
+        githubIssueUrl = j['github_issue_url'] as String?,
+        githubIssueNumber = j['github_issue_number'] as int?,
+        reviewerGithubUsername = j['reviewer_github_username'] as String?,
+        reviewerName = j['reviewer_name'] as String?,
+        createdAt = DateTime.parse(j['created_at'] as String);
+}
+
+class NoteEntry {
+  final String id;
+  final String noteId;
+  final String content;
+  final DateTime createdAt;
+
+  NoteEntry.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String,
+        noteId = j['note_id'] as String,
+        content = j['content'] as String,
         createdAt = DateTime.parse(j['created_at'] as String);
 }
 
@@ -124,7 +153,8 @@ List<_BrdSection> _parseBrdSections(String markdown) {
 
 bool _sectionIsChanged(String heading, List<String> changedSections) {
   final h = heading.toLowerCase();
-  return changedSections.any((c) => h.contains(c.toLowerCase()) || c.toLowerCase().contains(h));
+  return changedSections.any(
+      (c) => h.contains(c.toLowerCase()) || c.toLowerCase().contains(h));
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -161,6 +191,50 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
     }
   }
 
+  Future<MeetingNote?> addEntry(String noteId, String content) async {
+    try {
+      final resp = await ApiClient.dio.post(
+        '/api/notes/$noteId/entries',
+        data: {'content': content},
+      );
+      final note = MeetingNote.fromJson(resp.data as Map<String, dynamic>);
+      await fetchNotes();
+      return note;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<MeetingNote?> markReady(String noteId) async {
+    try {
+      final resp = await ApiClient.dio.post('/api/notes/$noteId/mark-ready');
+      final note = MeetingNote.fromJson(resp.data as Map<String, dynamic>);
+      await fetchNotes();
+      return note;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<MeetingNote?> assignReviewer(
+      String noteId, String reviewerUsername, String? reviewerName) async {
+    try {
+      final resp = await ApiClient.dio.post(
+        '/api/notes/$noteId/assign-reviewer',
+        data: {
+          'reviewer_github_username': reviewerUsername,
+          if (reviewerName != null && reviewerName.isNotEmpty)
+            'reviewer_name': reviewerName,
+        },
+      );
+      final note = MeetingNote.fromJson(resp.data as Map<String, dynamic>);
+      await fetchNotes();
+      return note;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<MeetingNote?> pollNote(String noteId) async {
     try {
       final resp = await ApiClient.dio.get('/api/notes/$noteId');
@@ -179,6 +253,17 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
       return MeetingNote.fromJson(resp.data as Map<String, dynamic>);
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<List<NoteEntry>> fetchEntries(String noteId) async {
+    try {
+      final resp = await ApiClient.dio.get('/api/notes/$noteId/entries');
+      return (resp.data['entries'] as List)
+          .map((j) => NoteEntry.fromJson(j as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
     }
   }
 
@@ -224,7 +309,8 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Text(
         status,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        style: TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }
@@ -264,17 +350,18 @@ class NotesTab extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: const BoxDecoration(
-                    color: kPrimaryLight,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.note_alt_outlined, size: 48, color: kPrimary),
+                      color: kPrimaryLight, shape: BoxShape.circle),
+                  child: const Icon(Icons.note_alt_outlined,
+                      size: 48, color: kPrimary),
                 ),
                 const Gap(16),
                 const Text('No meeting notes yet',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
                 const Gap(6),
                 const Text('Tap + New Meeting Note to get started',
-                    style: TextStyle(color: Color(0xFF6B7A8D), fontSize: 14)),
+                    style: TextStyle(
+                        color: Color(0xFF6B7A8D), fontSize: 14)),
               ],
             ),
           );
@@ -300,15 +387,17 @@ class _NoteCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final isDone = note.brdDraft != null && note.brdGenerationPhase == null;
-    final isWorking = note.brdGenerationPhase != null;
+    final isWorking =
+        note.brdGenerationPhase != null || note.status == 'In Progress';
+    final isDone = note.brdDraft != null && !isWorking;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => _NoteDetailScreen(note: note)),
+          MaterialPageRoute(
+              builder: (_) => _NoteDetailScreen(note: note)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -319,9 +408,7 @@ class _NoteCard extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: isDone
                       ? const Color(0xFF43A047).withValues(alpha: 0.12)
-                      : isWorking
-                          ? kPrimaryLight
-                          : kPrimaryLight,
+                      : kPrimaryLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -341,7 +428,8 @@ class _NoteCard extends ConsumerWidget {
                   children: [
                     Text(
                       note.title ?? 'Processing…',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -350,25 +438,37 @@ class _NoteCard extends ConsumerWidget {
                       children: [
                         Text(
                           isWorking
-                              ? (note.brdGenerationPhase == 0 ? 'Updating BRD…' : 'Generating BRD…')
+                              ? (note.brdGenerationPhase == 0
+                                  ? 'Updating BRD…'
+                                  : note.brdGenerationPhase != null
+                                      ? 'Generating… phase ${note.brdGenerationPhase}'
+                                      : 'Starting pipeline…')
                               : isDone
                                   ? 'v${note.currentVersionNumber} · BRD ready'
-                                  : 'No BRD yet',
+                                  : 'Draft · add notes then mark ready',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDone ? const Color(0xFF43A047) : cs.onSurfaceVariant,
+                            color: isDone
+                                ? const Color(0xFF43A047)
+                                : cs.onSurfaceVariant,
                           ),
                         ),
                         if (isDone) ...[
                           const Gap(6),
                           _StatusChip(note.status),
                         ],
+                        if (note.githubIssueUrl != null) ...[
+                          const Gap(4),
+                          const Icon(Icons.link_rounded,
+                              size: 14, color: kPrimary),
+                        ],
                       ],
                     ),
                     const Gap(2),
                     Text(
                       _formatDate(note.createdAt),
-                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -472,8 +572,8 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
               : '$current ${result.recognizedWords}';
           setState(() {
             _notesCtrl.text = appended;
-            _notesCtrl.selection =
-                TextSelection.fromPosition(TextPosition(offset: appended.length));
+            _notesCtrl.selection = TextSelection.fromPosition(
+                TextPosition(offset: appended.length));
             _listening = false;
             _sttStatus = '';
           });
@@ -490,7 +590,6 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
   Future<void> _submit() async {
     final notes = _notesCtrl.text.trim();
     if (notes.isEmpty) return;
-
     setState(() => _submitting = true);
     final note = await ref.read(notesProvider.notifier).createNote(
           notes,
@@ -499,13 +598,10 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
     if (!mounted) return;
     setState(() => _submitting = false);
     Navigator.of(context).pop();
-
     if (note != null) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => _NoteDetailScreen(note: note, polling: true),
-        ),
-      );
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => _NoteDetailScreen(note: note),
+      ));
     }
   }
 
@@ -537,84 +633,82 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
             ),
           ),
           const Gap(16),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: kPrimaryLight, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.note_add_rounded, color: kPrimary, size: 20),
-              ),
-              const Gap(10),
-              const Text('New Meeting Note',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-            ],
-          ),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: kPrimaryLight,
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.note_add_rounded,
+                  color: kPrimary, size: 20),
+            ),
+            const Gap(10),
+            const Text('New Meeting Note',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+          ]),
           const Gap(16),
-          Stack(
-            children: [
-              TextField(
-                controller: _notesCtrl,
-                maxLines: 7,
-                decoration: const InputDecoration(
-                  hintText:
-                      'Paste or type your raw meeting notes here…\nOr use the mic to dictate.',
-                  alignLabelWithHint: true,
-                  contentPadding: EdgeInsets.fromLTRB(14, 14, 50, 14),
-                ),
+          Stack(children: [
+            TextField(
+              controller: _notesCtrl,
+              maxLines: 7,
+              decoration: const InputDecoration(
+                hintText:
+                    'Paste or type your raw meeting notes here…\nOr use the mic to dictate.',
+                alignLabelWithHint: true,
+                contentPadding: EdgeInsets.fromLTRB(14, 14, 50, 14),
               ),
-              Positioned(
-                right: 4,
-                top: 4,
-                child: Column(
-                  children: [
-                    IconButton(
-                      tooltip: 'Paste',
-                      icon: const Icon(Icons.content_paste_rounded, size: 20),
-                      onPressed: () async {
-                        final data = await Clipboard.getData(Clipboard.kTextPlain);
-                        if (data?.text != null) {
-                          _notesCtrl.text = data!.text!.trim();
-                          _notesCtrl.selection = TextSelection.fromPosition(
-                            TextPosition(offset: _notesCtrl.text.length),
-                          );
-                        }
-                      },
+            ),
+            Positioned(
+              right: 4,
+              top: 4,
+              child: Column(children: [
+                IconButton(
+                  tooltip: 'Paste',
+                  icon:
+                      const Icon(Icons.content_paste_rounded, size: 20),
+                  onPressed: () async {
+                    final data =
+                        await Clipboard.getData(Clipboard.kTextPlain);
+                    if (data?.text != null) {
+                      _notesCtrl.text = data!.text!.trim();
+                      _notesCtrl.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _notesCtrl.text.length));
+                    }
+                  },
+                ),
+                if (_sttAvailable)
+                  IconButton(
+                    tooltip: _listening ? 'Stop' : 'Dictate',
+                    icon: Icon(
+                      _listening
+                          ? Icons.mic_rounded
+                          : Icons.mic_none_rounded,
+                      size: 20,
+                      color: _listening ? Colors.red : null,
                     ),
-                    if (_sttAvailable)
-                      IconButton(
-                        tooltip: _listening ? 'Stop' : 'Dictate',
-                        icon: Icon(
-                          _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                          size: 20,
-                          color: _listening ? Colors.red : null,
-                        ),
-                        onPressed: _toggleListening,
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+                    onPressed: _toggleListening,
+                  ),
+              ]),
+            ),
+          ]),
           if (_listening) ...[
             const Gap(6),
-            Row(
-              children: [
-                const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-                const Gap(8),
-                Text(_sttStatus,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
-              ],
-            ),
+            Row(children: [
+              const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              const Gap(8),
+              Text(_sttStatus,
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xFF6B7A8D))),
+            ]),
           ],
           const Gap(12),
           TextField(
@@ -634,9 +728,10 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.auto_awesome_rounded, size: 18),
-              label: Text(_submitting ? 'Generating BRD…' : 'Generate BRD'),
+              label: Text(_submitting ? 'Saving…' : 'Save Notes'),
             ),
           ),
         ],
@@ -645,27 +740,225 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
   }
 }
 
-// ── Request Update Sheet ──────────────────────────────────────────────────────
+// ── Add More Notes Sheet ──────────────────────────────────────────────────────
 
-class _RequestUpdateSheet extends StatefulWidget {
+class _AddMoreNotesSheet extends ConsumerStatefulWidget {
   final String noteId;
-  final void Function(String feedback) onSubmit;
+  final void Function(MeetingNote updated) onAdded;
 
-  const _RequestUpdateSheet({required this.noteId, required this.onSubmit});
+  const _AddMoreNotesSheet(
+      {required this.noteId, required this.onAdded});
 
   @override
-  State<_RequestUpdateSheet> createState() => _RequestUpdateSheetState();
+  ConsumerState<_AddMoreNotesSheet> createState() =>
+      _AddMoreNotesSheetState();
 }
 
-class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
+class _AddMoreNotesSheetState
+    extends ConsumerState<_AddMoreNotesSheet> {
   final _ctrl = TextEditingController();
+  final _stt = SpeechToText();
+  bool _sttAvailable = false;
+  bool _listening = false;
   bool _submitting = false;
 
   @override
+  void initState() {
+    super.initState();
+    _stt.initialize(
+      onStatus: (s) {
+        if (mounted) setState(() => _listening = s == 'listening');
+      },
+    ).then((ok) {
+      if (mounted) setState(() => _sttAvailable = ok);
+    });
+  }
+
+  @override
   void dispose() {
+    _stt.stop();
     _ctrl.dispose();
     super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const Gap(16),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: kPrimaryLight,
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.add_comment_rounded,
+                  color: kPrimary, size: 20),
+            ),
+            const Gap(10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Add More Notes',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text(
+                      'AI will incorporate this context into the BRD',
+                      style: TextStyle(
+                          fontSize: 12, color: Color(0xFF6B7A8D))),
+                ],
+              ),
+            ),
+          ]),
+          const Gap(16),
+          Stack(children: [
+            TextField(
+              controller: _ctrl,
+              maxLines: 6,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText:
+                    'Add additional requirements, decisions, constraints…',
+                alignLabelWithHint: true,
+                contentPadding: EdgeInsets.fromLTRB(14, 14, 50, 14),
+              ),
+            ),
+            Positioned(
+              right: 4,
+              top: 4,
+              child: Column(children: [
+                IconButton(
+                  tooltip: 'Paste',
+                  icon:
+                      const Icon(Icons.content_paste_rounded, size: 20),
+                  onPressed: () async {
+                    final data =
+                        await Clipboard.getData(Clipboard.kTextPlain);
+                    if (data?.text != null) {
+                      _ctrl.text = data!.text!.trim();
+                      _ctrl.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _ctrl.text.length));
+                    }
+                  },
+                ),
+                if (_sttAvailable)
+                  IconButton(
+                    tooltip: _listening ? 'Stop' : 'Dictate',
+                    icon: Icon(
+                      _listening
+                          ? Icons.mic_rounded
+                          : Icons.mic_none_rounded,
+                      size: 20,
+                      color: _listening ? Colors.red : null,
+                    ),
+                    onPressed: () async {
+                      if (_listening) {
+                        await _stt.stop();
+                        setState(() => _listening = false);
+                        return;
+                      }
+                      setState(() => _listening = true);
+                      await _stt.listen(
+                        onResult: (r) {
+                          if (r.finalResult) {
+                            final cur = _ctrl.text;
+                            final app = cur.isEmpty
+                                ? r.recognizedWords
+                                : '$cur ${r.recognizedWords}';
+                            setState(() {
+                              _ctrl.text = app;
+                              _ctrl.selection =
+                                  TextSelection.fromPosition(
+                                      TextPosition(offset: app.length));
+                              _listening = false;
+                            });
+                          }
+                        },
+                        listenOptions: SpeechListenOptions(
+                          listenFor: const Duration(minutes: 5),
+                          pauseFor: const Duration(seconds: 4),
+                          partialResults: false,
+                        ),
+                      );
+                    },
+                  ),
+              ]),
+            ),
+          ]),
+          const Gap(16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  _submitting || _ctrl.text.trim().isEmpty
+                      ? null
+                      : () async {
+                          setState(() => _submitting = true);
+                          final navigator = Navigator.of(context);
+                          final updated = await ref
+                              .read(notesProvider.notifier)
+                              .addEntry(
+                                  widget.noteId, _ctrl.text.trim());
+                          if (!mounted) return;
+                          navigator.pop();
+                          if (updated != null) {
+                            widget.onAdded(updated);
+                          }
+                        },
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.note_add_rounded, size: 18),
+              label: Text(_submitting ? 'Saving…' : 'Add Note'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Mark as Ready Sheet ───────────────────────────────────────────────────────
+// Simplified: no reviewer selection here — that happens after BRD is generated.
+
+class _MarkReadySheet extends ConsumerStatefulWidget {
+  final MeetingNote note;
+  final void Function(MeetingNote updated) onMarked;
+
+  const _MarkReadySheet({required this.note, required this.onMarked});
+
+  @override
+  ConsumerState<_MarkReadySheet> createState() => _MarkReadySheetState();
+}
+
+class _MarkReadySheetState extends ConsumerState<_MarkReadySheet> {
+  bool _submitting = false;
+  String? _error;
 
   @override
   Widget build(BuildContext context) {
@@ -687,41 +980,377 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                  color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)),
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
             ),
           ),
           const Gap(16),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFE53935).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.edit_note_rounded,
-                    color: Color(0xFFE53935), size: 20),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF1565C0).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.rocket_launch_rounded,
+                  color: Color(0xFF1565C0), size: 20),
+            ),
+            const Gap(10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Start BRD Generation',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text('Creates a GitHub ticket and generates the full BRD',
+                      style:
+                          TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
+                ],
               ),
-              const Gap(10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Request BRD Update',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-                    Text('AI will update only the affected sections',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
-                  ],
-                ),
-              ),
-            ],
+            ),
+          ]),
+          const Gap(20),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: kPrimaryLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('What happens:',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: kPrimary)),
+                const Gap(6),
+                ...[
+                  '🔗 GitHub ticket created, board moved to In Progress',
+                  '🤖 Agent analyzes all your notes + crawls any links',
+                  '📄 Full BRD generated in 7 phases (~2 min)',
+                  '👤 You assign a reviewer once the BRD is ready',
+                  '✅ Reviewer approves via GitHub — board moves to Done',
+                ].map((s) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(s,
+                          style: const TextStyle(
+                              fontSize: 12, color: kPrimary)),
+                    )),
+              ],
+            ),
           ),
+          if (_error != null) ...[
+            const Gap(12),
+            Text(_error!,
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFFE53935))),
+          ],
+          const Gap(16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1565C0)),
+              onPressed: _submitting
+                  ? null
+                  : () async {
+                      setState(() {
+                        _submitting = true;
+                        _error = null;
+                      });
+                      final navigator = Navigator.of(context);
+                      final updated = await ref
+                          .read(notesProvider.notifier)
+                          .markReady(widget.note.id);
+                      if (!mounted) return;
+                      if (updated != null) {
+                        navigator.pop();
+                        widget.onMarked(updated);
+                      } else {
+                        setState(() {
+                          _submitting = false;
+                          _error =
+                              'Failed to create GitHub issue. Check your GitHub config in Settings.';
+                        });
+                      }
+                    },
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.rocket_launch_rounded, size: 18),
+              label: Text(_submitting
+                  ? 'Creating GitHub ticket…'
+                  : 'Start BRD Generation'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Assign Reviewer Sheet ─────────────────────────────────────────────────────
+
+class _AssignReviewerSheet extends ConsumerStatefulWidget {
+  final MeetingNote note;
+  final void Function(MeetingNote updated) onAssigned;
+
+  const _AssignReviewerSheet(
+      {required this.note, required this.onAssigned});
+
+  @override
+  ConsumerState<_AssignReviewerSheet> createState() =>
+      _AssignReviewerSheetState();
+}
+
+class _AssignReviewerSheetState
+    extends ConsumerState<_AssignReviewerSheet> {
+  ReviewerItem? _selected;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final reviewers = ref.read(authProvider).user?.reviewerList ?? [];
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const Gap(16),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF6A1B9A).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.person_add_rounded,
+                  color: Color(0xFF6A1B9A), size: 20),
+            ),
+            const Gap(10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Assign Reviewer',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text(
+                      'Reviewer will be notified on GitHub to review the BRD',
+                      style:
+                          TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
+                ],
+              ),
+            ),
+          ]),
+          const Gap(20),
+          const Text('Select Reviewer',
+              style:
+                  TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const Gap(8),
+          if (reviewers.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.warning_amber_rounded,
+                    size: 16, color: Colors.orange),
+                Gap(8),
+                Expanded(
+                  child: Text(
+                    'No reviewers configured. Go to Settings to add reviewers.',
+                    style: TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
+                ),
+              ]),
+            )
+          else
+            RadioGroup<ReviewerItem>(
+              groupValue: _selected,
+              onChanged: (v) => setState(() => _selected = v),
+              child: Column(
+                children: reviewers
+                    .map((r) => RadioListTile<ReviewerItem>(
+                          value: r,
+                          title: Text(r.name,
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500)),
+                          subtitle: Text('@${r.githubUsername}',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF6B7A8D))),
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: const Color(0xFF6A1B9A),
+                        ))
+                    .toList(),
+              ),
+            ),
+          if (_error != null) ...[
+            const Gap(8),
+            Text(_error!,
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFFE53935))),
+          ],
+          const Gap(16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF6A1B9A)),
+              onPressed: _submitting || _selected == null
+                  ? null
+                  : () async {
+                      setState(() {
+                        _submitting = true;
+                        _error = null;
+                      });
+                      final navigator = Navigator.of(context);
+                      final updated = await ref
+                          .read(notesProvider.notifier)
+                          .assignReviewer(
+                            widget.note.id,
+                            _selected!.githubUsername,
+                            _selected!.name,
+                          );
+                      if (!mounted) return;
+                      if (updated != null) {
+                        navigator.pop();
+                        widget.onAssigned(updated);
+                      } else {
+                        setState(() {
+                          _submitting = false;
+                          _error = 'Failed to assign reviewer. Try again.';
+                        });
+                      }
+                    },
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.send_rounded, size: 18),
+              label: Text(_submitting
+                  ? 'Assigning reviewer…'
+                  : 'Assign & Start Review'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Request Update Sheet ──────────────────────────────────────────────────────
+
+class _RequestUpdateSheet extends StatefulWidget {
+  final String noteId;
+  final void Function(String feedback) onSubmit;
+
+  const _RequestUpdateSheet(
+      {required this.noteId, required this.onSubmit});
+
+  @override
+  State<_RequestUpdateSheet> createState() =>
+      _RequestUpdateSheetState();
+}
+
+class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
+  final _ctrl = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const Gap(16),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color:
+                      const Color(0xFFE53935).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.edit_note_rounded,
+                  color: Color(0xFFE53935), size: 20),
+            ),
+            const Gap(10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Request BRD Update',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text('AI updates only the affected sections',
+                      style: TextStyle(
+                          fontSize: 12, color: Color(0xFF6B7A8D))),
+                ],
+              ),
+            ),
+          ]),
           const Gap(16),
           TextField(
             controller: _ctrl,
             maxLines: 5,
             autofocus: true,
             decoration: const InputDecoration(
-              hintText: 'Describe what needs to change…\n\nExample: "Add GDPR compliance requirements to Section 14. Expand the KPI targets to include NPS score."',
+              hintText:
+                  'Describe what needs to change…\n\nExample: "Add GDPR compliance to Section 14. Expand KPI targets to include NPS."',
               alignLabelWithHint: true,
               contentPadding: EdgeInsets.all(14),
             ),
@@ -740,9 +1369,12 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.auto_awesome_rounded, size: 18),
-              label: Text(_submitting ? 'Submitting…' : 'Update BRD with AI'),
+              label: Text(_submitting
+                  ? 'Submitting…'
+                  : 'Update BRD with AI'),
             ),
           ),
         ],
@@ -751,16 +1383,16 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
   }
 }
 
-// ── Note Detail (BRD viewer) ──────────────────────────────────────────────────
+// ── Note Detail Screen ────────────────────────────────────────────────────────
 
 class _NoteDetailScreen extends ConsumerStatefulWidget {
   final MeetingNote note;
-  final bool polling;
 
-  const _NoteDetailScreen({required this.note, this.polling = false});
+  const _NoteDetailScreen({required this.note});
 
   @override
-  ConsumerState<_NoteDetailScreen> createState() => _NoteDetailScreenState();
+  ConsumerState<_NoteDetailScreen> createState() =>
+      _NoteDetailScreenState();
 }
 
 class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
@@ -769,15 +1401,29 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   Timer? _pollTimer;
   TabController? _tabController;
 
-  bool get _isWorking => _note.brdGenerationPhase != null;
+  // Draft: notes collected, no BRD yet, not working
+  bool get _isDraft =>
+      _note.status == 'Draft' && _note.brdGenerationPhase == null;
+
+  // Working: pipeline running (initial or update)
+  bool get _isWorking =>
+      _note.brdGenerationPhase != null || _note.status == 'In Progress';
+
+  // BRD exists and not actively regenerating
   bool get _brdReady => _note.brdDraft != null && !_isWorking;
+
+  // Poll while generating or while under active review (to catch updates)
+  bool get _shouldPoll =>
+      _isWorking ||
+      _note.status == 'In Review' ||
+      _note.status == 'Changes Requested';
 
   @override
   void initState() {
     super.initState();
     _note = widget.note;
     if (_brdReady) _initTabs();
-    if (widget.polling || _isWorking) _startPolling();
+    if (_shouldPoll) _startPolling();
   }
 
   void _initTabs() {
@@ -788,19 +1434,63 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   void _startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      final updated = await ref.read(notesProvider.notifier).pollNote(_note.id);
+      final updated =
+          await ref.read(notesProvider.notifier).pollNote(_note.id);
       if (updated != null && mounted) {
         final wasWorking = _isWorking;
         setState(() {
           _note = updated;
           if (_brdReady && _tabController == null) _initTabs();
         });
-        if (wasWorking && !_isWorking) {
+        // Stop polling when generation finishes or note is approved
+        if ((wasWorking && !_isWorking) || updated.status == 'Approved') {
           _pollTimer?.cancel();
           ref.read(notesProvider.notifier).fetchNotes();
         }
       }
     });
+  }
+
+  void _openMarkReady() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MarkReadySheet(
+        note: _note,
+        onMarked: (updated) {
+          setState(() => _note = updated);
+          _startPolling(); // pipeline is now running
+        },
+      ),
+    );
+  }
+
+  void _openAssignReviewer() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AssignReviewerSheet(
+        note: _note,
+        onAssigned: (updated) {
+          setState(() => _note = updated);
+          _startPolling(); // poll for reviewer comments
+        },
+      ),
+    );
+  }
+
+  void _openAddMoreNotes() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddMoreNotesSheet(
+        noteId: _note.id,
+        onAdded: (updated) => setState(() => _note = updated),
+      ),
+    );
   }
 
   void _openRequestUpdate() {
@@ -812,8 +1502,9 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
         noteId: _note.id,
         onSubmit: (feedback) async {
           Navigator.pop(context);
-          final updated =
-              await ref.read(notesProvider.notifier).submitFeedback(_note.id, feedback);
+          final updated = await ref
+              .read(notesProvider.notifier)
+              .submitFeedback(_note.id, feedback);
           if (updated != null && mounted) {
             setState(() => _note = updated);
             _startPolling();
@@ -832,56 +1523,135 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _note.title ?? 'Processing…',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          if (_brdReady) ...[
-            _StatusChip(_note.status),
-            const Gap(4),
-            IconButton(
-              icon: const Icon(Icons.edit_note_rounded),
-              tooltip: 'Request Update',
-              onPressed: _openRequestUpdate,
-            ),
-            IconButton(
-              icon: const Icon(Icons.copy_rounded),
-              tooltip: 'Copy BRD',
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _note.brdDraft ?? ''));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('BRD copied to clipboard')),
-                );
-              },
-            ),
-          ],
-        ],
-        bottom: _brdReady && _tabController != null
-            ? TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: 'BRD Draft'),
-                  Tab(text: 'Versions'),
-                  Tab(text: 'Raw Notes'),
-                ],
-                labelColor: kPrimary,
-                indicatorColor: kPrimary,
-                unselectedLabelColor: const Color(0xFF8896A5),
-              )
-            : null,
-      ),
-      body: _isWorking ? _buildLoadingBody(cs) : _buildReadyBody(cs),
+      appBar: _buildAppBar(),
+      body: _isDraft
+          ? _buildDraftBody()
+          : _isWorking
+              ? _buildLoadingBody()
+              : _buildReadyBody(),
     );
   }
 
-  Widget _buildLoadingBody(ColorScheme cs) {
-    final isUpdate = _note.brdDraft != null && _note.brdGenerationPhase == 0;
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: Text(
+        _isDraft
+            ? (_note.title == 'New Note' ? 'Meeting Notes' : (_note.title ?? 'Meeting Notes'))
+            : _isWorking
+                ? 'Generating BRD…'
+                : (_note.title ?? 'BRD'),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        overflow: TextOverflow.ellipsis,
+      ),
+      actions: [
+        // Mark as Ready — Draft state
+        if (_isDraft)
+          IconButton(
+            icon: const Icon(Icons.rocket_launch_rounded,
+                color: Color(0xFF1565C0)),
+            tooltip: 'Start BRD Generation',
+            onPressed: _openMarkReady,
+          ),
+
+        // Status + actions when BRD exists
+        if (_brdReady) ...[
+          _StatusChip(_note.status),
+          const Gap(2),
+          if (_note.githubIssueUrl != null)
+            IconButton(
+              icon: const Icon(Icons.open_in_new_rounded, size: 20),
+              tooltip: 'View on GitHub',
+              onPressed: () => launchUrl(Uri.parse(_note.githubIssueUrl!)),
+            ),
+          // Assign Reviewer — BRD ready, waiting for reviewer
+          if (_note.status == 'Pending Review')
+            IconButton(
+              icon: const Icon(Icons.person_add_rounded,
+                  color: Color(0xFF6A1B9A)),
+              tooltip: 'Assign Reviewer',
+              onPressed: _openAssignReviewer,
+            ),
+          // Overflow: Request Update + Copy BRD
+          if (_note.status != 'Pending Review' &&
+              _note.status != 'Approved')
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                if (v == 'update') _openRequestUpdate();
+                if (v == 'copy') {
+                  Clipboard.setData(
+                      ClipboardData(text: _note.brdDraft ?? ''));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('BRD copied to clipboard')),
+                  );
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'update',
+                  child: ListTile(
+                    leading: Icon(Icons.edit_note_rounded),
+                    title: Text('Request Update'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'copy',
+                  child: ListTile(
+                    leading: Icon(Icons.copy_rounded),
+                    title: Text('Copy BRD'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+              ],
+            ),
+          if (_note.status == 'Approved')
+            IconButton(
+              icon: const Icon(Icons.copy_rounded, size: 20),
+              tooltip: 'Copy BRD',
+              onPressed: () {
+                Clipboard.setData(
+                    ClipboardData(text: _note.brdDraft ?? ''));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('BRD copied to clipboard')),
+                );
+              },
+            ),
+        ],
+      ],
+      bottom: _brdReady && _tabController != null
+          ? TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'BRD Draft'),
+                Tab(text: 'Versions'),
+                Tab(text: 'Notes History'),
+              ],
+              labelColor: kPrimary,
+              indicatorColor: kPrimary,
+              unselectedLabelColor: const Color(0xFF8896A5),
+            )
+          : null,
+    );
+  }
+
+  // Draft body: shows notes timeline + Add More Notes button
+  Widget _buildDraftBody() {
+    return _NotesHistoryTab(
+      note: _note,
+      onAddMore: _openAddMoreNotes,
+      key: ValueKey(_note.id),
+    );
+  }
+
+  Widget _buildLoadingBody() {
+    final cs = Theme.of(context).colorScheme;
+    final isUpdate =
+        _note.brdDraft != null && _note.brdGenerationPhase == 0;
     final phase = _note.brdGenerationPhase;
 
     return Center(
@@ -891,52 +1661,66 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
           const CircularProgressIndicator(),
           const Gap(20),
           Text(
-            isUpdate ? 'Updating BRD from feedback…' : 'Generating your BRD…',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            isUpdate ? 'Updating BRD…' : 'Generating BRD…',
+            style: const TextStyle(
+                fontWeight: FontWeight.w600, fontSize: 16),
           ),
           const Gap(8),
-          if (!isUpdate && phase != null && phase > 0) ...[
+          if (!isUpdate && phase != null && phase > 0 &&
+              phase < _brdPhaseNames.length) ...[
             Text(
-              'Phase $phase of 7',
+              phase <= 2
+                  ? 'Step $phase of 9'
+                  : 'Phase ${phase - 2} of 7',
               style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 13, color: kPrimary),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: kPrimary),
             ),
             const Gap(4),
             Text(
               _brdPhaseNames[phase],
               textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+              style:
+                  TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
             ),
             const Gap(8),
             SizedBox(
               width: 200,
               child: LinearProgressIndicator(
-                value: phase / 7,
-                backgroundColor: cs.onSurfaceVariant.withValues(alpha: 0.15),
-                valueColor: const AlwaysStoppedAnimation<Color>(kPrimary),
+                value: phase / (_brdPhaseNames.length - 1),
+                backgroundColor:
+                    cs.onSurfaceVariant.withValues(alpha: 0.15),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(kPrimary),
               ),
             ),
           ] else
             Text(
               isUpdate
-                  ? 'The AI is applying your requested changes.\nThis takes about 30–60 seconds.'
-                  : 'The AI is reading your notes${_note.wikiUrl != null ? '\nand crawling the wiki link' : ''}.\nThis takes about 1–2 minutes.',
+                  ? 'Applying your changes. About 30–60 seconds.'
+                  : 'Crawling links, analyzing notes, generating BRD…\nAbout 1–2 minutes.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+              style:
+                  TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildReadyBody(ColorScheme cs) {
+  Widget _buildReadyBody() {
     if (_tabController == null) return const SizedBox.shrink();
     return TabBarView(
       controller: _tabController,
       children: [
-        _BrdDraftTab(brdMarkdown: _note.brdDraft ?? ''),
+        _BrdDraftTab(note: _note),
         _VersionsTab(note: _note),
-        _RawNotesTab(note: _note),
+        _NotesHistoryTab(
+          note: _note,
+          onAddMore: null, // entries locked once pipeline starts
+          key: ValueKey(_note.currentVersionNumber),
+        ),
       ],
     );
   }
@@ -945,23 +1729,95 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
 // ── BRD Draft tab ─────────────────────────────────────────────────────────────
 
 class _BrdDraftTab extends StatelessWidget {
-  final String brdMarkdown;
-  const _BrdDraftTab({required this.brdMarkdown});
+  final MeetingNote note;
+  const _BrdDraftTab({required this.note});
 
   @override
   Widget build(BuildContext context) {
-    return Markdown(
-      data: brdMarkdown,
-      selectable: true,
-      padding: const EdgeInsets.all(16),
-      styleSheet: MarkdownStyleSheet(
-        h1: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kPrimary),
-        h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-        p: const TextStyle(fontSize: 14, height: 1.5),
-        tableHead: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-        tableBody: const TextStyle(fontSize: 13),
-      ),
+    final cs = Theme.of(context).colorScheme;
+
+    return CustomScrollView(
+      slivers: [
+        // Status banner (shown for all non-Draft, non-In-Progress statuses)
+        if (note.status != 'Draft' && note.status != 'In Progress')
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: (_statusColors[note.status] ?? cs.primary)
+                    .withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: (_statusColors[note.status] ?? cs.primary)
+                        .withValues(alpha: 0.3)),
+              ),
+              child: Row(children: [
+                Icon(
+                  note.status == 'Approved'
+                      ? Icons.check_circle_rounded
+                      : note.status == 'Pending Review'
+                          ? Icons.hourglass_top_rounded
+                          : Icons.rate_review_rounded,
+                  size: 16,
+                  color: _statusColors[note.status] ?? cs.primary,
+                ),
+                const Gap(8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        note.status == 'Approved'
+                            ? 'BRD Approved ✓'
+                            : note.status == 'Pending Review'
+                                ? 'BRD Ready — tap Assign Reviewer to start review'
+                                : note.status == 'In Review'
+                                    ? 'Under Review by @${note.reviewerGithubUsername}'
+                                    : 'Changes Requested',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: _statusColors[note.status] ??
+                                cs.primary),
+                      ),
+                      if (note.githubIssueUrl != null &&
+                          note.status != 'Pending Review')
+                        const Text(
+                            'GitHub issue linked · comments trigger AI updates',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF6B7A8D))),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: Markdown(
+            data: note.brdDraft ?? '',
+            selectable: true,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            styleSheet: MarkdownStyleSheet(
+              h1: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.bold),
+              h2: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: kPrimary),
+              h3: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.bold),
+              p: const TextStyle(fontSize: 14, height: 1.5),
+              tableHead: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 13),
+              tableBody: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -982,11 +1838,8 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  void _load() {
-    _versionsFuture = ref.read(notesProvider.notifier).fetchVersions(widget.note.id);
+    _versionsFuture =
+        ref.read(notesProvider.notifier).fetchVersions(widget.note.id);
   }
 
   @override
@@ -1002,22 +1855,24 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
         final versions = snap.data ?? [];
         if (versions.isEmpty) {
           return Center(
-            child: Text('No versions yet',
-                style: TextStyle(color: cs.onSurfaceVariant)),
-          );
+              child: Text('No versions yet',
+                  style:
+                      TextStyle(color: cs.onSurfaceVariant)));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: versions.length,
           itemBuilder: (_, i) {
             final v = versions[i];
-            final isCurrent = v.versionNumber == widget.note.currentVersionNumber;
+            final isCurrent =
+                v.versionNumber == widget.note.currentVersionNumber;
             return _VersionCard(
               version: v,
               isCurrent: isCurrent,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => _BrdVersionScreen(version: v, isCurrent: isCurrent),
+                  builder: (_) => _BrdVersionScreen(
+                      version: v, isCurrent: isCurrent),
                 ),
               ),
             );
@@ -1033,11 +1888,10 @@ class _VersionCard extends StatelessWidget {
   final bool isCurrent;
   final VoidCallback onTap;
 
-  const _VersionCard({
-    required this.version,
-    required this.isCurrent,
-    required this.onTap,
-  });
+  const _VersionCard(
+      {required this.version,
+      required this.isCurrent,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1051,143 +1905,311 @@ class _VersionCard extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: isCurrent ? kPrimaryLight : cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(
-                  child: Text(
-                    'v${version.versionNumber}',
-                    style: TextStyle(
+          child: Row(children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: isCurrent
+                    ? kPrimaryLight
+                    : cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: Text(
+                  'v${version.versionNumber}',
+                  style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isCurrent ? kPrimary : cs.onSurfaceVariant,
-                    ),
-                  ),
+                      color: isCurrent
+                          ? kPrimary
+                          : cs.onSurfaceVariant),
                 ),
               ),
-              const Gap(12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            version.changeSummary ?? 'Initial generation',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 13),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isCurrent)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: kPrimary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('Current',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: kPrimary)),
-                          ),
-                      ],
+            ),
+            const Gap(12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(
+                        version.changeSummary ?? 'Initial generation',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    const Gap(4),
-                    Row(
-                      children: [
-                        Text(
-                          _formatDate(version.createdAt),
-                          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    if (isCurrent)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: kPrimary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        if (changedCount > 0) ...[
-                          const Gap(8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFF8F00).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '$changedCount section${changedCount == 1 ? '' : 's'} changed',
-                              style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFFFF8F00)),
-                            ),
-                          ),
-                        ],
-                      ],
+                        child: const Text('Current',
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: kPrimary)),
+                      ),
+                  ]),
+                  const Gap(4),
+                  Row(children: [
+                    Text(
+                      _fmt(version.createdAt),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant),
                     ),
-                  ],
-                ),
+                    if (changedCount > 0) ...[
+                      const Gap(8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF8F00)
+                              .withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$changedCount section${changedCount == 1 ? '' : 's'} changed',
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFFF8F00)),
+                        ),
+                      ),
+                    ],
+                  ]),
+                ],
               ),
-              Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
-            ],
-          ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                color: cs.onSurfaceVariant),
+          ]),
         ),
       ),
     );
   }
 
-  String _formatDate(DateTime dt) {
-    return '${dt.day}/${dt.month}/${dt.year}  '
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-  }
+  String _fmt(DateTime dt) =>
+      '${dt.day}/${dt.month}/${dt.year}  '
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
-// ── Raw Notes tab ─────────────────────────────────────────────────────────────
+// ── Notes History tab ─────────────────────────────────────────────────────────
 
-class _RawNotesTab extends StatelessWidget {
+class _NotesHistoryTab extends ConsumerStatefulWidget {
   final MeetingNote note;
-  const _RawNotesTab({required this.note});
+  final VoidCallback? onAddMore;
+
+  const _NotesHistoryTab({required this.note, this.onAddMore, super.key});
+
+  @override
+  ConsumerState<_NotesHistoryTab> createState() =>
+      _NotesHistoryTabState();
+}
+
+class _NotesHistoryTabState extends ConsumerState<_NotesHistoryTab> {
+  late Future<List<NoteEntry>> _entriesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _entriesFuture =
+        ref.read(notesProvider.notifier).fetchEntries(widget.note.id);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (note.wikiUrl != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: kPrimaryLight,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.link_rounded, size: 16, color: kPrimary),
+    final cs = Theme.of(context).colorScheme;
+
+    return FutureBuilder<List<NoteEntry>>(
+      future: _entriesFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final entries = snap.data ?? [];
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          children: [
+            // Wiki URL pill
+            if (widget.note.wikiUrl != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                    color: kPrimaryLight,
+                    borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  const Icon(Icons.link_rounded,
+                      size: 16, color: kPrimary),
                   const Gap(6),
                   Expanded(
-                    child: Text(
-                      note.wikiUrl!,
-                      style: const TextStyle(fontSize: 12, color: kPrimary),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(widget.note.wikiUrl!,
+                        style: const TextStyle(
+                            fontSize: 12, color: kPrimary),
+                        overflow: TextOverflow.ellipsis),
                   ),
+                ]),
+              ),
+              const Gap(16),
+            ],
+
+            // Entry timeline
+            ...entries.asMap().entries.map((e) {
+              final idx = e.key;
+              final entry = e.value;
+              return _EntryCard(
+                  entry: entry, index: idx, total: entries.length);
+            }),
+
+            if (entries.isEmpty)
+              Center(
+                child: Text('No entries yet',
+                    style:
+                        TextStyle(color: cs.onSurfaceVariant)),
+              ),
+
+            // Add More Notes button
+            if (widget.onAddMore != null) ...[
+              const Gap(16),
+              OutlinedButton.icon(
+                onPressed: widget.onAddMore,
+                icon: const Icon(Icons.add_comment_rounded, size: 18),
+                label: const Text('Add More Notes'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kPrimary,
+                  side: const BorderSide(color: kPrimary),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _EntryCard extends StatefulWidget {
+  final NoteEntry entry;
+  final int index;
+  final int total;
+
+  const _EntryCard(
+      {required this.entry, required this.index, required this.total});
+
+  @override
+  State<_EntryCard> createState() => _EntryCardState();
+}
+
+class _EntryCardState extends State<_EntryCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isLast = widget.index == widget.total - 1;
+    final preview = widget.entry.content.length > 180
+        ? '${widget.entry.content.substring(0, 180)}…'
+        : widget.entry.content;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Timeline connector
+          Column(children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: kPrimaryLight,
+                shape: BoxShape.circle,
+                border: Border.all(color: kPrimary, width: 1.5),
+              ),
+              child: Center(
+                child: Text(
+                  '${widget.index + 1}',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: kPrimary),
+                ),
+              ),
+            ),
+            if (!isLast)
+              Expanded(
+                child: Container(
+                  width: 1.5,
+                  color: cs.outlineVariant,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                ),
+              ),
+          ]),
+          const Gap(12),
+          // Entry content
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text(
+                      'Entry ${widget.index + 1}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: kPrimary),
+                    ),
+                    const Gap(8),
+                    Text(
+                      _fmt(widget.entry.createdAt),
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                  ]),
+                  const Gap(6),
+                  Text(
+                    _expanded ? widget.entry.content : preview,
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                  if (widget.entry.content.length > 180)
+                    GestureDetector(
+                      onTap: () =>
+                          setState(() => _expanded = !_expanded),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _expanded ? 'Show less' : 'Show more',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: kPrimary,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-            const Gap(12),
-          ],
-          Text(note.rawNotes, style: const TextStyle(fontSize: 14, height: 1.6)),
+          ),
         ],
       ),
     );
   }
+
+  String _fmt(DateTime dt) =>
+      '${dt.day}/${dt.month}/${dt.year} '
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
 // ── BRD Version Screen (diff view) ───────────────────────────────────────────
@@ -1196,7 +2218,8 @@ class _BrdVersionScreen extends StatelessWidget {
   final BrdVersion version;
   final bool isCurrent;
 
-  const _BrdVersionScreen({required this.version, required this.isCurrent});
+  const _BrdVersionScreen(
+      {required this.version, required this.isCurrent});
 
   @override
   Widget build(BuildContext context) {
@@ -1210,12 +2233,14 @@ class _BrdVersionScreen extends StatelessWidget {
           children: [
             Text(
               'Version ${version.versionNumber}${isCurrent ? ' (Current)' : ''}',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 15),
             ),
             if (hasChanges)
               Text(
                 '${version.changedSections.length} section${version.changedSections.length == 1 ? '' : 's'} changed',
-                style: const TextStyle(fontSize: 12, color: Color(0xFFFF8F00)),
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFFFF8F00)),
               ),
           ],
         ),
@@ -1224,10 +2249,11 @@ class _BrdVersionScreen extends StatelessWidget {
             icon: const Icon(Icons.copy_rounded),
             tooltip: 'Copy BRD',
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: version.brdMarkdown));
+              Clipboard.setData(
+                  ClipboardData(text: version.brdMarkdown));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('BRD copied to clipboard')),
-              );
+                  const SnackBar(
+                      content: Text('BRD copied to clipboard')));
             },
           ),
         ],
@@ -1249,20 +2275,16 @@ class _BrdVersionScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.edit_note_rounded,
-                            size: 16, color: Color(0xFFFF8F00)),
-                        Gap(6),
-                        Text(
-                          'Changed Sections',
+                    const Row(children: [
+                      Icon(Icons.edit_note_rounded,
+                          size: 16, color: Color(0xFFFF8F00)),
+                      Gap(6),
+                      Text('Changed Sections',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: Color(0xFFFF8F00)),
-                        ),
-                      ],
-                    ),
+                              color: Color(0xFFFF8F00))),
+                    ]),
                     const Gap(6),
                     Wrap(
                       spacing: 6,
@@ -1272,8 +2294,10 @@ class _BrdVersionScreen extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFF8F00).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
+                                  color: const Color(0xFFFF8F00)
+                                      .withValues(alpha: 0.12),
+                                  borderRadius:
+                                      BorderRadius.circular(6),
                                 ),
                                 child: Text(s,
                                     style: const TextStyle(
@@ -1288,119 +2312,97 @@ class _BrdVersionScreen extends StatelessWidget {
                       const Divider(height: 1),
                       const Gap(8),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.comment_outlined,
-                              size: 14, color: Color(0xFF6B7A8D)),
-                          const Gap(6),
-                          Expanded(
-                            child: Text(
-                              version.reviewerComment!,
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF6B7A8D),
-                                  fontStyle: FontStyle.italic),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.comment_outlined,
+                                size: 14, color: Color(0xFF6B7A8D)),
+                            const Gap(6),
+                            Expanded(
+                              child: Text(version.reviewerComment!,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF6B7A8D),
+                                      fontStyle: FontStyle.italic)),
                             ),
-                          ),
-                        ],
-                      ),
+                          ]),
                     ],
                   ],
                 ),
               ),
             ),
 
-          // Section-by-section BRD content
+          // Section-by-section content
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, i) {
                 final section = sections[i];
                 final isChanged = hasChanges &&
-                    _sectionIsChanged(section.heading, version.changedSections);
-
+                    _sectionIsChanged(
+                        section.heading, version.changedSections);
                 final headingPrefix = '#' * section.level;
-                final sectionMarkdown =
+                final md =
                     '$headingPrefix ${section.heading}\n\n${section.content}';
+                final mdStyle = MarkdownStyleSheet(
+                  h1: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                  h2: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: kPrimary),
+                  h3: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.bold),
+                  p: const TextStyle(fontSize: 14, height: 1.5),
+                  tableHead: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13),
+                  tableBody: const TextStyle(fontSize: 13),
+                );
 
                 if (isChanged) {
                   return Container(
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    decoration: BoxDecoration(
-                      border: const Border(
-                        left: BorderSide(color: Color(0xFFFF8F00), width: 3),
-                      ),
-                      color: const Color(0xFFFF8F00).withValues(alpha: 0.04),
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(8),
-                        bottomRight: Radius.circular(8),
-                      ),
+                    margin:
+                        const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                          left: BorderSide(
+                              color: Color(0xFFFF8F00), width: 3)),
                     ),
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                          child: MarkdownBody(
-                            data: sectionMarkdown,
+                    child: Stack(children: [
+                      Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                        child: MarkdownBody(
+                            data: md,
                             selectable: true,
-                            styleSheet: MarkdownStyleSheet(
-                              h1: const TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.bold),
-                              h2: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: kPrimary),
-                              h3: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.bold),
-                              p: const TextStyle(fontSize: 14, height: 1.5),
-                              tableHead: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13),
-                              tableBody: const TextStyle(fontSize: 13),
-                            ),
+                            styleSheet: mdStyle),
+                      ),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF8F00)
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                        ),
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFF8F00).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Changed',
+                          child: const Text('Changed',
                               style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFFFF8F00)),
-                            ),
-                          ),
+                                  color: Color(0xFFFF8F00))),
                         ),
-                      ],
-                    ),
+                      ),
+                    ]),
                   );
                 }
 
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: MarkdownBody(
-                    data: sectionMarkdown,
-                    selectable: true,
-                    styleSheet: MarkdownStyleSheet(
-                      h1: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      h2: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: kPrimary),
-                      h3: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold),
-                      p: const TextStyle(fontSize: 14, height: 1.5),
-                      tableHead: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 13),
-                      tableBody: const TextStyle(fontSize: 13),
-                    ),
-                  ),
+                      data: md,
+                      selectable: true,
+                      styleSheet: mdStyle),
                 );
               },
               childCount: sections.length,
