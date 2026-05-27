@@ -3,6 +3,8 @@ import 'storage.dart';
 import 'constants.dart';
 
 class ApiClient {
+  static void Function()? onUnauthorized;
+
   static final Dio _dio = Dio(BaseOptions(
     baseUrl: AppConstants.baseUrl,
     connectTimeout: const Duration(seconds: 30),
@@ -25,7 +27,11 @@ class _AuthInterceptor extends Interceptor {
   }
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (err.response?.statusCode == 401) {
+      await AppStorage.clear();
+      ApiClient.onUnauthorized?.call();
+    }
     handler.next(err);
   }
 }

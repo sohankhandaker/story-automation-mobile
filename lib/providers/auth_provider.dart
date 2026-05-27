@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api.dart';
 import '../core/storage.dart';
 import '../models/user.dart';
+
 
 class AuthState {
   final User? user;
@@ -19,6 +21,7 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier() : super(AuthState()) {
+    ApiClient.onUnauthorized = () => state = AuthState();
     _restoreSession();
   }
 
@@ -41,6 +44,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'password': password,
       });
       await _handleAuthResponse(resp.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      state = state.copyWith(loading: false, error: e.userMessage);
     } on Exception catch (e) {
       state = state.copyWith(loading: false, error: e.toString());
     }
@@ -54,6 +59,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'password': password,
       });
       await _handleAuthResponse(resp.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      state = state.copyWith(loading: false, error: e.userMessage);
     } on Exception catch (e) {
       state = state.copyWith(loading: false, error: e.toString());
     }
