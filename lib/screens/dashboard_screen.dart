@@ -3,24 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import '../app.dart';
-import '../providers/auth_provider.dart';
-import '../providers/tasks_provider.dart';
-import '../models/task.dart';
-import '../widgets/status_badge.dart';
-import '../widgets/task_card.dart';
-import 'chat_screen.dart';
-import 'notes_screen.dart' show NotesTab, NewNoteSheet;
+import 'notes_screen.dart' show NotesTab, NewNoteSheet, notesProvider, MeetingNote;
 import 'settings_screen.dart' show SettingsTab;
 
 // ── Status metadata ───────────────────────────────────────────────────────────
 
 const _statusMeta = {
-  'Backlog': (Icons.inbox_rounded, Color(0xFF78909C)),
-  'Ready': (Icons.rocket_launch_rounded, Color(0xFF1E88E5)),
+  'Draft': (Icons.edit_note_rounded, Color(0xFF78909C)),
   'In Progress': (Icons.autorenew_rounded, Color(0xFFFF8F00)),
+  'Pending Review': (Icons.hourglass_top_rounded, Color(0xFF1E88E5)),
   'In Review': (Icons.rate_review_rounded, Color(0xFF8E24AA)),
-  'Changes Requested': (Icons.edit_note_rounded, Color(0xFFE53935)),
-  'Done': (Icons.task_alt_rounded, Color(0xFF43A047)),
+  'Changes Requested': (Icons.feedback_rounded, Color(0xFFE53935)),
+  'Approved': (Icons.task_alt_rounded, Color(0xFF43A047)),
 };
 
 // ── Dashboard shell ───────────────────────────────────────────────────────────
@@ -43,11 +37,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       appBar: _buildAppBar(cs),
       body: IndexedStack(
         index: _selectedIndex,
-        children: const [
-          _HomeTab(),
-          _TasksTab(),
-          NotesTab(),
-          SettingsTab(),
+        children: [
+          _HomeTab(onGoToNotes: () => setState(() => _selectedIndex = 1)),
+          const NotesTab(),
+          const SettingsTab(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -58,11 +51,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard_rounded),
             label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.task_outlined),
-            selectedIcon: Icon(Icons.task_rounded),
-            label: 'Tasks',
           ),
           NavigationDestination(
             icon: Icon(Icons.note_alt_outlined),
@@ -76,36 +64,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      floatingActionButton: _selectedIndex == 0
+      floatingActionButton: _selectedIndex == 1
           ? FloatingActionButton.extended(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ChatScreen(taskId: null)),
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const NewNoteSheet(),
               ),
               backgroundColor: kPrimary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
               label: const Text(
-                'New Requirement',
+                'New Meeting Note',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             )
-          : _selectedIndex == 2
-              ? FloatingActionButton.extended(
-                  onPressed: () => showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => const NewNoteSheet(),
-                  ),
-                  backgroundColor: kPrimary,
-                  foregroundColor: Colors.white,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text(
-                    'New Meeting Note',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                )
-              : null,
+          : null,
     );
   }
 
@@ -137,22 +112,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: 'Refresh',
-              onPressed: () => ref.read(tasksProvider.notifier).fetchTasks(),
+              onPressed: () => ref.read(notesProvider.notifier).fetchNotes(),
             ),
           ],
         );
       case 1:
-        return AppBar(
-          title: const Text('My Tasks', style: TextStyle(fontWeight: FontWeight.bold)),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: 'Refresh',
-              onPressed: () => ref.read(tasksProvider.notifier).fetchTasks(),
-            ),
-          ],
-        );
-      case 2:
         return AppBar(
           title: const Text('Meeting Notes', style: TextStyle(fontWeight: FontWeight.bold)),
         );
@@ -167,14 +131,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 // ── Home tab ──────────────────────────────────────────────────────────────────
 
 class _HomeTab extends ConsumerWidget {
-  const _HomeTab();
+  final VoidCallback onGoToNotes;
+  const _HomeTab({required this.onGoToNotes});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authProvider);
-    final tasksAsync = ref.watch(tasksProvider);
+    final notesAsync = ref.watch(notesProvider);
 
-    return tasksAsync.when(
+    return notesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
         child: Column(
@@ -184,34 +148,34 @@ class _HomeTab extends ConsumerWidget {
             const Gap(12),
             Text('$e'),
             TextButton(
-              onPressed: () => ref.read(tasksProvider.notifier).fetchTasks(),
+              onPressed: () => ref.read(notesProvider.notifier).fetchNotes(),
               child: const Text('Retry'),
             ),
           ],
         ),
       ),
-      data: (tasks) => RefreshIndicator(
-        onRefresh: () => ref.read(tasksProvider.notifier).fetchTasks(),
+      data: (notes) => RefreshIndicator(
+        onRefresh: () => ref.read(notesProvider.notifier).fetchNotes(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
-            _WelcomeBanner(name: auth.user?.name ?? ''),
+            const _WelcomeBanner(),
             const Gap(20),
-            _StatusTilesSection(tasks: tasks),
-            if (tasks.any((t) => t.status == 'In Review' && t.reviewerGithubUsername == null)) ...[
+            _PipelineStatsSection(notes: notes),
+            if (notes.any((n) => n.status == 'Pending Review')) ...[
               const Gap(24),
               const _SectionHeader(
                 title: 'Action Needed',
                 icon: Icons.notification_important_rounded,
-                color: Color(0xFFE53935),
+                color: Color(0xFF1E88E5),
               ),
               const Gap(10),
-              ...tasks
-                  .where((t) => t.status == 'In Review' && t.reviewerGithubUsername == null)
-                  .map((t) => _SummaryCard(task: t)),
+              ...notes
+                  .where((n) => n.status == 'Pending Review')
+                  .map((n) => _NoteSummaryCard(note: n, onTap: onGoToNotes)),
             ],
-            if (tasks.any((t) => t.isInProgress)) ...[
+            if (notes.any((n) => n.status == 'In Progress')) ...[
               const Gap(24),
               const _SectionHeader(
                 title: 'In Progress',
@@ -219,9 +183,11 @@ class _HomeTab extends ConsumerWidget {
                 color: Color(0xFFFF8F00),
               ),
               const Gap(10),
-              ...tasks.where((t) => t.isInProgress).map((t) => _SummaryCard(task: t)),
+              ...notes
+                  .where((n) => n.status == 'In Progress')
+                  .map((n) => _NoteSummaryCard(note: n, onTap: onGoToNotes)),
             ],
-            if (tasks.isEmpty) ...[
+            if (notes.isEmpty) ...[
               const Gap(40),
               const _EmptyState(),
             ],
@@ -235,8 +201,7 @@ class _HomeTab extends ConsumerWidget {
 // ── Welcome banner ────────────────────────────────────────────────────────────
 
 class _WelcomeBanner extends StatelessWidget {
-  final String name;
-  const _WelcomeBanner({required this.name});
+  const _WelcomeBanner();
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +211,6 @@ class _WelcomeBanner extends StatelessWidget {
         : hour < 17
             ? 'Good afternoon'
             : 'Good evening';
-    final firstName = name.split(' ').first;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -265,7 +229,7 @@ class _WelcomeBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$greeting, $firstName! 👋',
+                  '$greeting! 👋',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -274,7 +238,7 @@ class _WelcomeBanner extends StatelessWidget {
                 ),
                 const Gap(4),
                 const Text(
-                  'What would you like to automate today?',
+                  'Your BRD → PRD pipeline at a glance.',
                   style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 13),
                 ),
               ],
@@ -287,46 +251,42 @@ class _WelcomeBanner extends StatelessWidget {
   }
 }
 
-// ── Status tiles ──────────────────────────────────────────────────────────────
+// ── Pipeline stats ────────────────────────────────────────────────────────────
 
-class _StatusTilesSection extends StatelessWidget {
-  final List<Task> tasks;
-  const _StatusTilesSection({required this.tasks});
+class _PipelineStatsSection extends StatelessWidget {
+  final List<MeetingNote> notes;
+  const _PipelineStatsSection({required this.notes});
 
   @override
   Widget build(BuildContext context) {
     final counts = <String, int>{};
-    for (final t in tasks) {
-      counts[t.status] = (counts[t.status] ?? 0) + 1;
+    for (final n in notes) {
+      counts[n.status] = (counts[n.status] ?? 0) + 1;
     }
-
-    final statuses = _statusMeta.keys.toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Total + Done summary row
         Row(
           children: [
             _BigStatCard(
               label: 'Total',
-              sublabel: 'requirements',
-              count: tasks.length,
-              icon: Icons.layers_rounded,
+              sublabel: 'meeting notes',
+              count: notes.length,
+              icon: Icons.note_alt_rounded,
               color: kPrimary,
             ),
             const Gap(10),
             _BigStatCard(
-              label: 'Completed',
-              sublabel: 'stories done',
-              count: counts['Done'] ?? 0,
+              label: 'Approved',
+              sublabel: 'BRDs complete',
+              count: counts['Approved'] ?? 0,
               icon: Icons.task_alt_rounded,
               color: const Color(0xFF43A047),
             ),
           ],
         ),
         const Gap(14),
-        // Status label
         const Text(
           'By Status',
           style: TextStyle(
@@ -337,16 +297,15 @@ class _StatusTilesSection extends StatelessWidget {
           ),
         ),
         const Gap(10),
-        // Horizontal scroll status tiles
         SizedBox(
           height: 108,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            itemCount: statuses.length,
+            itemCount: _statusMeta.length,
             separatorBuilder: (_, __) => const Gap(10),
             itemBuilder: (_, i) {
-              final status = statuses[i];
+              final status = _statusMeta.keys.toList()[i];
               final (icon, color) = _statusMeta[status]!;
               return _StatusTile(
                 status: status,
@@ -555,22 +514,23 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ── Summary card ──────────────────────────────────────────────────────────────
+// ── Note summary card ─────────────────────────────────────────────────────────
 
-class _SummaryCard extends StatelessWidget {
-  final Task task;
-  const _SummaryCard({required this.task});
+class _NoteSummaryCard extends StatelessWidget {
+  final MeetingNote note;
+  final VoidCallback onTap;
+  const _NoteSummaryCard({required this.note, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final (_, color) = _statusMeta[note.status] ?? (Icons.circle, kPrimary);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ChatScreen(taskId: task.id)),
-        ),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -580,14 +540,31 @@ class _SummaryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      task.title,
+                      note.title ?? 'Untitled Note',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 14),
                     ),
                     const Gap(6),
-                    StatusBadge(status: task.status, small: true),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: color.withValues(alpha: 0.3), width: 1),
+                      ),
+                      child: Text(
+                        note.status,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -615,85 +592,20 @@ class _EmptyState extends StatelessWidget {
             color: kPrimaryLight,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.inbox_rounded, size: 48, color: kPrimary),
+          child: const Icon(Icons.note_alt_outlined, size: 48, color: kPrimary),
         ),
         const Gap(16),
         const Text(
-          'No requirements yet',
+          'No meeting notes yet',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const Gap(6),
         const Text(
-          'Tap + New Requirement to get started',
+          'Go to Notes tab to add your first meeting note',
           style: TextStyle(color: Color(0xFF6B7A8D), fontSize: 14),
+          textAlign: TextAlign.center,
         ),
       ],
-    );
-  }
-}
-
-// ── Tasks tab ─────────────────────────────────────────────────────────────────
-
-class _TasksTab extends ConsumerWidget {
-  const _TasksTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tasksAsync = ref.watch(tasksProvider);
-
-    return tasksAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const Gap(12),
-            Text('$e'),
-            TextButton(
-              onPressed: () => ref.read(tasksProvider.notifier).fetchTasks(),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-      data: (tasks) {
-        if (tasks.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.task_outlined, size: 64, color: Color(0xFFB0BEC5)),
-                Gap(12),
-                Text(
-                  'No tasks yet',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                ),
-                Gap(4),
-                Text(
-                  'Create one from Dashboard',
-                  style: TextStyle(color: Color(0xFF6B7A8D)),
-                ),
-              ],
-            ),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () => ref.read(tasksProvider.notifier).fetchTasks(),
-          child: ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: tasks.length,
-            itemBuilder: (_, i) => TaskCard(
-              task: tasks[i],
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => ChatScreen(taskId: tasks[i].id)),
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }
