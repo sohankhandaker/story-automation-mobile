@@ -30,7 +30,8 @@ const _brdPhaseNames = [
   'Stakeholders, Personas & Governance',
   'Business Processes & Functional Requirements',
   'Non-Functional Requirements, Data & Integrations',
-  'KPIs, Roadmap, Risks & Acceptance Criteria',
+  'KPIs, Roadmap & MVP Scope',
+  'Risks, Acceptance Criteria & Checklists',
 ];
 
 const _statusColors = {
