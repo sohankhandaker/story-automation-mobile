@@ -1,15 +1,21 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app.dart';
 import '../core/api.dart';
 import '../models/user.dart';
+import 'shared_widgets.dart';
 import '../providers/auth_provider.dart';
+import 'prd_screen.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -38,6 +44,20 @@ const _statusColors = {
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
+class ReviewerStatus {
+  final String githubUsername;
+  final String? name;
+  final String status; // Pending | Approved
+
+  ReviewerStatus({required this.githubUsername, this.name, required this.status});
+
+  factory ReviewerStatus.fromJson(Map<String, dynamic> j) => ReviewerStatus(
+        githubUsername: j['github_username'] as String,
+        name: j['name'] as String?,
+        status: (j['status'] as String?) ?? 'Pending',
+      );
+}
+
 class MeetingNote {
   final String id;
   final String? title;
@@ -51,6 +71,7 @@ class MeetingNote {
   final int? githubIssueNumber;
   final String? reviewerGithubUsername;
   final String? reviewerName;
+  final List<ReviewerStatus> reviewers;
   final DateTime createdAt;
 
   MeetingNote.fromJson(Map<String, dynamic> j)
@@ -66,6 +87,9 @@ class MeetingNote {
         githubIssueNumber = j['github_issue_number'] as int?,
         reviewerGithubUsername = j['reviewer_github_username'] as String?,
         reviewerName = j['reviewer_name'] as String?,
+        reviewers = (j['reviewers'] as List<dynamic>? ?? [])
+            .map((r) => ReviewerStatus.fromJson(r as Map<String, dynamic>))
+            .toList(),
         createdAt = DateTime.parse(j['created_at'] as String);
 }
 
@@ -157,6 +181,16 @@ bool _sectionIsChanged(String heading, List<String> changedSections) {
       (c) => h.contains(c.toLowerCase()) || c.toLowerCase().contains(h));
 }
 
+// ── Attachment helper ─────────────────────────────────────────────────────────
+
+class _AttachedFile {
+  final String name;
+  final Uint8List bytes;
+  final bool isImage;
+  const _AttachedFile(
+      {required this.name, required this.bytes, required this.isImage});
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
@@ -191,11 +225,15 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
     }
   }
 
-  Future<MeetingNote?> addEntry(String noteId, String content) async {
+  Future<MeetingNote?> addEntry(String noteId, String content,
+      {String? wikiUrl}) async {
     try {
       final resp = await ApiClient.dio.post(
         '/api/notes/$noteId/entries',
-        data: {'content': content},
+        data: {
+          'content': content,
+          if (wikiUrl != null) 'wiki_url': wikiUrl,
+        },
       );
       final note = MeetingNote.fromJson(resp.data as Map<String, dynamic>);
       await fetchNotes();
@@ -283,6 +321,18 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
       await ApiClient.dio.delete('/api/notes/$noteId');
       await fetchNotes();
     } catch (_) {}
+  }
+
+  Future<void> uploadAttachments(
+      String noteId, List<({String name, Uint8List bytes})> files) async {
+    for (final f in files) {
+      try {
+        final form = FormData.fromMap({
+          'file': MultipartFile.fromBytes(f.bytes, filename: f.name),
+        });
+        await ApiClient.dio.post('/api/notes/$noteId/attachments', data: form);
+      } catch (_) {}
+    }
   }
 }
 
@@ -529,11 +579,22 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
   final _notesCtrl = TextEditingController();
   final _wikiCtrl = TextEditingController();
   final _stt = SpeechToText();
+  final _imagePicker = ImagePicker();
 
   bool _sttAvailable = false;
   bool _listening = false;
   bool _submitting = false;
   String _sttStatus = '';
+  String _partialText = '';
+  final List<_AttachedFile> _attachments = [];
+  final List<String> _wikiUrls = [];
+
+  void _addWikiUrl() {
+    final url = _wikiCtrl.text.trim();
+    if (url.isEmpty) return;
+    if (!_wikiUrls.contains(url)) setState(() => _wikiUrls.add(url));
+    _wikiCtrl.clear();
+  }
 
   @override
   void initState() {
@@ -542,12 +603,20 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
   }
 
   Future<void> _initStt() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) return;
     final ok = await _stt.initialize(
       onStatus: (s) {
         if (mounted) setState(() => _listening = s == 'listening');
       },
       onError: (e) {
-        if (mounted) setState(() => _listening = false);
+        if (mounted) {
+          setState(() {
+            _listening = false;
+            _sttStatus = '';
+            _partialText = '';
+          });
+        }
       },
     );
     if (mounted) setState(() => _sttAvailable = ok);
@@ -556,45 +625,106 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
   Future<void> _toggleListening() async {
     if (_listening) {
       await _stt.stop();
-      setState(() => _listening = false);
+      setState(() {
+        _listening = false;
+        _sttStatus = '';
+        _partialText = '';
+      });
       return;
     }
     setState(() {
       _listening = true;
       _sttStatus = 'Listening…';
+      _partialText = '';
     });
     await _stt.listen(
       onResult: (result) {
         if (result.finalResult) {
-          final current = _notesCtrl.text;
-          final appended = current.isEmpty
+          final base = _notesCtrl.text;
+          final appended = base.isEmpty
               ? result.recognizedWords
-              : '$current ${result.recognizedWords}';
+              : '$base ${result.recognizedWords}';
           setState(() {
             _notesCtrl.text = appended;
-            _notesCtrl.selection = TextSelection.fromPosition(
-                TextPosition(offset: appended.length));
+            _notesCtrl.selection =
+                TextSelection.collapsed(offset: appended.length);
             _listening = false;
             _sttStatus = '';
+            _partialText = '';
           });
+        } else {
+          setState(() => _partialText = result.recognizedWords);
         }
       },
       listenOptions: SpeechListenOptions(
         listenFor: const Duration(minutes: 5),
-        pauseFor: const Duration(seconds: 4),
-        partialResults: false,
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
       ),
     );
+  }
+
+  Future<void> _pickImage() async {
+    final source = await _showImageSourceDialog();
+    if (source == null) return;
+    final picked = await _imagePicker.pickImage(
+        source: source, imageQuality: 80, maxWidth: 1920);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    setState(() => _attachments
+        .add(_AttachedFile(name: picked.name, bytes: bytes, isImage: true)));
+  }
+
+  Future<ImageSource?> _showImageSourceDialog() async {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Photo Library'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_rounded),
+            title: const Text('Camera'),
+            onTap: () => Navigator.pop(context, ImageSource.camera),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'txt', 'doc', 'docx', 'md'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final f = result.files.first;
+    if (f.bytes == null) return;
+    setState(() => _attachments
+        .add(_AttachedFile(name: f.name, bytes: f.bytes!, isImage: false)));
   }
 
   Future<void> _submit() async {
     final notes = _notesCtrl.text.trim();
     if (notes.isEmpty) return;
+    // flush any URL typed but not yet added
+    if (_wikiCtrl.text.trim().isNotEmpty) _addWikiUrl();
     setState(() => _submitting = true);
-    final note = await ref.read(notesProvider.notifier).createNote(
-          notes,
-          _wikiCtrl.text.trim().isEmpty ? null : _wikiCtrl.text.trim(),
-        );
+    final notifier = ref.read(notesProvider.notifier);
+    final note = await notifier.createNote(
+      notes,
+      _wikiUrls.isEmpty ? null : _wikiUrls.join('\n'),
+    );
+    if (note != null && _attachments.isNotEmpty) {
+      await notifier.uploadAttachments(
+        note.id,
+        _attachments.map((a) => (name: a.name, bytes: a.bytes)).toList(),
+      );
+    }
     if (!mounted) return;
     setState(() => _submitting = false);
     Navigator.of(context).pop();
@@ -705,19 +835,69 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
                   height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2)),
               const Gap(8),
-              Text(_sttStatus,
+              Expanded(
+                child: Text(
+                  _partialText.isNotEmpty ? _partialText : _sttStatus,
                   style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF6B7A8D))),
+                      fontSize: 12, color: Color(0xFF6B7A8D)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ]),
           ],
-          const Gap(12),
-          TextField(
-            controller: _wikiCtrl,
-            keyboardType: TextInputType.url,
-            decoration: const InputDecoration(
-              hintText: 'Wiki / Confluence / Notion URL (optional)',
-              prefixIcon: Icon(Icons.link_rounded, size: 18),
+          const Gap(10),
+          // ── Attach row ─────────────────────────────────────────────────
+          Row(children: [
+            OutlinedButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(Icons.image_rounded, size: 16),
+              label: const Text('Image'),
+              style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 13)),
             ),
+            const Gap(8),
+            OutlinedButton.icon(
+              onPressed: _pickFile,
+              icon: const Icon(Icons.attach_file_rounded, size: 16),
+              label: const Text('File'),
+              style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 13)),
+            ),
+          ]),
+          if (_attachments.isNotEmpty) ...[
+            const Gap(8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: _attachments.map((a) {
+                return Chip(
+                  avatar: Icon(
+                    a.isImage
+                        ? Icons.image_rounded
+                        : Icons.insert_drive_file_rounded,
+                    size: 14,
+                  ),
+                  label: Text(a.name,
+                      style: const TextStyle(fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  deleteIcon: const Icon(Icons.close, size: 14),
+                  onDeleted: () => setState(() => _attachments.remove(a)),
+                );
+              }).toList(),
+            ),
+          ],
+          const Gap(10),
+          WikiUrlInput(
+            controller: _wikiCtrl,
+            urls: _wikiUrls,
+            onAdd: _addWikiUrl,
+            onRemove: (url) => setState(() => _wikiUrls.remove(url)),
           ),
           const Gap(16),
           SizedBox(
@@ -744,10 +924,11 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
 
 class _AddMoreNotesSheet extends ConsumerStatefulWidget {
   final String noteId;
+  final String? initialWikiUrl;
   final void Function(MeetingNote updated) onAdded;
 
   const _AddMoreNotesSheet(
-      {required this.noteId, required this.onAdded});
+      {required this.noteId, this.initialWikiUrl, required this.onAdded});
 
   @override
   ConsumerState<_AddMoreNotesSheet> createState() =>
@@ -757,27 +938,136 @@ class _AddMoreNotesSheet extends ConsumerStatefulWidget {
 class _AddMoreNotesSheetState
     extends ConsumerState<_AddMoreNotesSheet> {
   final _ctrl = TextEditingController();
+  final _wikiCtrl = TextEditingController();
   final _stt = SpeechToText();
+  final _imagePicker = ImagePicker();
   bool _sttAvailable = false;
   bool _listening = false;
   bool _submitting = false;
+  String _partialText = '';
+  final List<_AttachedFile> _attachments = [];
+  late final List<String> _wikiUrls;
+
+  void _addWikiUrl() {
+    final url = _wikiCtrl.text.trim();
+    if (url.isEmpty) return;
+    if (!_wikiUrls.contains(url)) setState(() => _wikiUrls.add(url));
+    _wikiCtrl.clear();
+  }
 
   @override
   void initState() {
     super.initState();
-    _stt.initialize(
+    // Seed existing URLs from the note's wiki_url (newline-separated)
+    final existing = widget.initialWikiUrl ?? '';
+    _wikiUrls = existing.isEmpty
+        ? []
+        : existing.split('\n').where((u) => u.isNotEmpty).toList();
+    _ctrl.addListener(() { if (mounted) setState(() {}); });
+    _initStt();
+  }
+
+  Future<void> _initStt() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) return;
+    final ok = await _stt.initialize(
       onStatus: (s) {
         if (mounted) setState(() => _listening = s == 'listening');
       },
-    ).then((ok) {
-      if (mounted) setState(() => _sttAvailable = ok);
+      onError: (_) {
+        if (mounted) {
+          setState(() {
+            _listening = false;
+            _partialText = '';
+          });
+        }
+      },
+    );
+    if (mounted) setState(() => _sttAvailable = ok);
+  }
+
+  Future<void> _toggleListening() async {
+    if (_listening) {
+      await _stt.stop();
+      setState(() {
+        _listening = false;
+        _partialText = '';
+      });
+      return;
+    }
+    setState(() {
+      _listening = true;
+      _partialText = '';
     });
+    await _stt.listen(
+      onResult: (r) {
+        if (r.finalResult) {
+          final cur = _ctrl.text;
+          final app =
+              cur.isEmpty ? r.recognizedWords : '$cur ${r.recognizedWords}';
+          setState(() {
+            _ctrl.text = app;
+            _ctrl.selection = TextSelection.collapsed(offset: app.length);
+            _listening = false;
+            _partialText = '';
+          });
+        } else {
+          setState(() => _partialText = r.recognizedWords);
+        }
+      },
+      listenOptions: SpeechListenOptions(
+        listenFor: const Duration(minutes: 5),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+      ),
+    );
+  }
+
+  Future<void> _pickImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Photo Library'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_rounded),
+            title: const Text('Camera'),
+            onTap: () => Navigator.pop(context, ImageSource.camera),
+          ),
+        ]),
+      ),
+    );
+    if (source == null) return;
+    final picked = await _imagePicker.pickImage(
+        source: source, imageQuality: 80, maxWidth: 1920);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    setState(() => _attachments
+        .add(_AttachedFile(name: picked.name, bytes: bytes, isImage: true)));
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'txt', 'doc', 'docx', 'md'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final f = result.files.first;
+    if (f.bytes == null) return;
+    setState(() => _attachments
+        .add(_AttachedFile(name: f.name, bytes: f.bytes!, isImage: false)));
   }
 
   @override
   void dispose() {
     _stt.stop();
     _ctrl.dispose();
+    _wikiCtrl.dispose();
     super.dispose();
   }
 
@@ -851,8 +1141,7 @@ class _AddMoreNotesSheetState
               child: Column(children: [
                 IconButton(
                   tooltip: 'Paste',
-                  icon:
-                      const Icon(Icons.content_paste_rounded, size: 20),
+                  icon: const Icon(Icons.content_paste_rounded, size: 20),
                   onPressed: () async {
                     final data =
                         await Clipboard.getData(Clipboard.kTextPlain);
@@ -873,60 +1162,112 @@ class _AddMoreNotesSheetState
                       size: 20,
                       color: _listening ? Colors.red : null,
                     ),
-                    onPressed: () async {
-                      if (_listening) {
-                        await _stt.stop();
-                        setState(() => _listening = false);
-                        return;
-                      }
-                      setState(() => _listening = true);
-                      await _stt.listen(
-                        onResult: (r) {
-                          if (r.finalResult) {
-                            final cur = _ctrl.text;
-                            final app = cur.isEmpty
-                                ? r.recognizedWords
-                                : '$cur ${r.recognizedWords}';
-                            setState(() {
-                              _ctrl.text = app;
-                              _ctrl.selection =
-                                  TextSelection.fromPosition(
-                                      TextPosition(offset: app.length));
-                              _listening = false;
-                            });
-                          }
-                        },
-                        listenOptions: SpeechListenOptions(
-                          listenFor: const Duration(minutes: 5),
-                          pauseFor: const Duration(seconds: 4),
-                          partialResults: false,
-                        ),
-                      );
-                    },
+                    onPressed: _toggleListening,
                   ),
               ]),
             ),
           ]),
-          const Gap(16),
+          if (_listening) ...[
+            const Gap(6),
+            Row(children: [
+              const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              const Gap(8),
+              Expanded(
+                child: Text(
+                  _partialText.isNotEmpty ? _partialText : 'Listening…',
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xFF6B7A8D)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+          ],
+          const Gap(10),
+          Row(children: [
+            OutlinedButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(Icons.image_rounded, size: 16),
+              label: const Text('Image'),
+              style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 13)),
+            ),
+            const Gap(8),
+            OutlinedButton.icon(
+              onPressed: _pickFile,
+              icon: const Icon(Icons.attach_file_rounded, size: 16),
+              label: const Text('File'),
+              style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 13)),
+            ),
+          ]),
+          if (_attachments.isNotEmpty) ...[
+            const Gap(8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: _attachments.map((a) {
+                return Chip(
+                  avatar: Icon(
+                    a.isImage
+                        ? Icons.image_rounded
+                        : Icons.insert_drive_file_rounded,
+                    size: 14,
+                  ),
+                  label: Text(a.name,
+                      style: const TextStyle(fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  deleteIcon: const Icon(Icons.close, size: 14),
+                  onDeleted: () => setState(() => _attachments.remove(a)),
+                );
+              }).toList(),
+            ),
+          ],
+          const Gap(10),
+          WikiUrlInput(
+            controller: _wikiCtrl,
+            urls: _wikiUrls,
+            onAdd: _addWikiUrl,
+            onRemove: (url) => setState(() => _wikiUrls.remove(url)),
+          ),
+          const Gap(12),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed:
-                  _submitting || _ctrl.text.trim().isEmpty
-                      ? null
-                      : () async {
-                          setState(() => _submitting = true);
-                          final navigator = Navigator.of(context);
-                          final updated = await ref
-                              .read(notesProvider.notifier)
-                              .addEntry(
-                                  widget.noteId, _ctrl.text.trim());
-                          if (!mounted) return;
-                          navigator.pop();
-                          if (updated != null) {
-                            widget.onAdded(updated);
-                          }
-                        },
+              onPressed: _submitting || _ctrl.text.trim().isEmpty
+                  ? null
+                  : () async {
+                      if (_wikiCtrl.text.trim().isNotEmpty) _addWikiUrl();
+                      setState(() => _submitting = true);
+                      final navigator = Navigator.of(context);
+                      final notifier = ref.read(notesProvider.notifier);
+                      final updated = await notifier.addEntry(
+                        widget.noteId,
+                        _ctrl.text.trim(),
+                        wikiUrl: _wikiUrls.isEmpty ? null : _wikiUrls.join('\n'),
+                      );
+                      if (updated != null && _attachments.isNotEmpty) {
+                        await notifier.uploadAttachments(
+                          widget.noteId,
+                          _attachments
+                              .map((a) => (name: a.name, bytes: a.bytes))
+                              .toList(),
+                        );
+                      }
+                      if (!mounted) return;
+                      navigator.pop();
+                      if (updated != null) {
+                        widget.onAdded(updated);
+                      }
+                    },
               icon: _submitting
                   ? const SizedBox(
                       width: 18,
@@ -1284,11 +1625,27 @@ class _RequestUpdateSheet extends StatefulWidget {
 
 class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
   final _ctrl = TextEditingController();
+  final _wikiCtrl = TextEditingController();
+  final List<String> _wikiUrls = [];
   bool _submitting = false;
+
+  void _addWikiUrl() {
+    final url = _wikiCtrl.text.trim();
+    if (url.isEmpty) return;
+    if (!_wikiUrls.contains(url)) setState(() => _wikiUrls.add(url));
+    _wikiCtrl.clear();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl.addListener(() { if (mounted) setState(() {}); });
+  }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _wikiCtrl.dispose();
     super.dispose();
   }
 
@@ -1355,6 +1712,13 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
               contentPadding: EdgeInsets.all(14),
             ),
           ),
+          const Gap(12),
+          WikiUrlInput(
+            controller: _wikiCtrl,
+            urls: _wikiUrls,
+            onAdd: _addWikiUrl,
+            onRemove: (url) => setState(() => _wikiUrls.remove(url)),
+          ),
           const Gap(16),
           SizedBox(
             width: double.infinity,
@@ -1362,8 +1726,12 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
               onPressed: _submitting || _ctrl.text.trim().isEmpty
                   ? null
                   : () {
+                      if (_wikiCtrl.text.trim().isNotEmpty) _addWikiUrl();
                       setState(() => _submitting = true);
-                      widget.onSubmit(_ctrl.text.trim());
+                      final feedback = _wikiUrls.isEmpty
+                          ? _ctrl.text.trim()
+                          : '${_ctrl.text.trim()}\n\nAdditional context URLs:\n${_wikiUrls.map((u) => '- $u').join('\n')}';
+                      widget.onSubmit(feedback);
                     },
               icon: _submitting
                   ? const SizedBox(
@@ -1400,6 +1768,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   late MeetingNote _note;
   Timer? _pollTimer;
   TabController? _tabController;
+  int _entryVersion = 0; // increments on each entry add to force list refresh
 
   // Draft: notes collected, no BRD yet, not working
   bool get _isDraft =>
@@ -1488,7 +1857,11 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
       backgroundColor: Colors.transparent,
       builder: (_) => _AddMoreNotesSheet(
         noteId: _note.id,
-        onAdded: (updated) => setState(() => _note = updated),
+        initialWikiUrl: _note.wikiUrl,
+        onAdded: (updated) => setState(() {
+          _note = updated;
+          _entryVersion++;
+        }),
       ),
     );
   }
@@ -1564,12 +1937,16 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               tooltip: 'View on GitHub',
               onPressed: () => launchUrl(Uri.parse(_note.githubIssueUrl!)),
             ),
-          // Assign Reviewer — BRD ready, waiting for reviewer
-          if (_note.status == 'Pending Review')
+          // Assign / re-assign reviewer
+          if (_note.status == 'Pending Review' ||
+              _note.status == 'In Review' ||
+              _note.status == 'Changes Requested')
             IconButton(
               icon: const Icon(Icons.person_add_rounded,
                   color: Color(0xFF6A1B9A)),
-              tooltip: 'Assign Reviewer',
+              tooltip: _note.reviewers.isNotEmpty
+                  ? 'Add Another Reviewer'
+                  : 'Assign Reviewer',
               onPressed: _openAssignReviewer,
             ),
           // Overflow: Request Update + Copy BRD
@@ -1608,7 +1985,16 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
                 ),
               ],
             ),
-          if (_note.status == 'Approved')
+          if (_note.status == 'Approved') ...[
+            IconButton(
+              icon: const Icon(Icons.description_rounded,
+                  color: Color(0xFFE65100)),
+              tooltip: 'Generate PRD',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => PrdScreen(noteId: _note.id)),
+              ),
+            ),
             IconButton(
               icon: const Icon(Icons.copy_rounded, size: 20),
               tooltip: 'Copy BRD',
@@ -1621,6 +2007,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
                 );
               },
             ),
+          ],
         ],
       ],
       bottom: _brdReady && _tabController != null
@@ -1644,68 +2031,91 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
     return _NotesHistoryTab(
       note: _note,
       onAddMore: _openAddMoreNotes,
-      key: ValueKey(_note.id),
+      key: ValueKey('${_note.id}_$_entryVersion'),
     );
   }
 
   Widget _buildLoadingBody() {
-    final cs = Theme.of(context).colorScheme;
     final isUpdate =
         _note.brdDraft != null && _note.brdGenerationPhase == 0;
     final phase = _note.brdGenerationPhase;
+    final totalPhases = _brdPhaseNames.length - 1;
+    final hasPhase = !isUpdate && phase != null && phase > 0 && phase < _brdPhaseNames.length;
+    final phaseVal = hasPhase ? phase : 0;
+    final pct = hasPhase ? phaseVal / totalPhases : (isUpdate ? null : 0.0);
 
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(),
-          const Gap(20),
-          Text(
-            isUpdate ? 'Updating BRD…' : 'Generating BRD…',
-            style: const TextStyle(
-                fontWeight: FontWeight.w600, fontSize: 16),
-          ),
-          const Gap(8),
-          if (!isUpdate && phase != null && phase > 0 &&
-              phase < _brdPhaseNames.length) ...[
-            Text(
-              phase <= 2
-                  ? 'Step $phase of 9'
-                  : 'Phase ${phase - 2} of 7',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: kPrimary),
-            ),
-            const Gap(4),
-            Text(
-              _brdPhaseNames[phase],
-              textAlign: TextAlign.center,
-              style:
-                  TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
-            ),
-            const Gap(8),
-            SizedBox(
-              width: 200,
-              child: LinearProgressIndicator(
-                value: phase / (_brdPhaseNames.length - 1),
-                backgroundColor:
-                    cs.onSurfaceVariant.withValues(alpha: 0.15),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(kPrimary),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  value: pct != null && pct > 0 ? pct : null,
+                  color: kPrimary,
+                ),
               ),
+              const Gap(10),
+              Expanded(
+                child: Text(
+                  hasPhase
+                      ? _brdPhaseNames[phaseVal]
+                      : (isUpdate ? 'Applying your changes…' : 'Generating BRD…'),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: kPrimary,
+                  ),
+                ),
+              ),
+              if (pct != null)
+                Text(
+                  '${(pct * 100).round()}%',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: kPrimary,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 5,
+              backgroundColor: kPrimaryLight,
+              color: kPrimary,
             ),
-          ] else
-            Text(
-              isUpdate
-                  ? 'Applying your changes. About 30–60 seconds.'
-                  : 'Crawling links, analyzing notes, generating BRD…\nAbout 1–2 minutes.',
-              textAlign: TextAlign.center,
-              style:
-                  TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+          ),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              hasPhase
+                  ? 'Phase $phaseVal of $totalPhases  ·  ${((pct ?? 0) * 100).round()}% complete'
+                  : (isUpdate
+                      ? 'Applying your changes. About 30–60 seconds.'
+                      : 'Crawling links, analyzing notes…  About 1–2 minutes.'),
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
             ),
-        ],
-      ),
+          ),
+        ),
+        Container(height: 1, color: const Color(0xFFE8EDF2)),
+      ],
     );
   }
 
@@ -1738,7 +2148,7 @@ class _BrdDraftTab extends StatelessWidget {
 
     return CustomScrollView(
       slivers: [
-        // Status banner (shown for all non-Draft, non-In-Progress statuses)
+        // Status + reviewers banner
         if (note.status != 'Draft' && note.status != 'In Progress')
           SliverToBoxAdapter(
             child: Container(
@@ -1752,46 +2162,100 @@ class _BrdDraftTab extends StatelessWidget {
                     color: (_statusColors[note.status] ?? cs.primary)
                         .withValues(alpha: 0.3)),
               ),
-              child: Row(children: [
-                Icon(
-                  note.status == 'Approved'
-                      ? Icons.check_circle_rounded
-                      : note.status == 'Pending Review'
-                          ? Icons.hourglass_top_rounded
-                          : Icons.rate_review_rounded,
-                  size: 16,
-                  color: _statusColors[note.status] ?? cs.primary,
-                ),
-                const Gap(8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        note.status == 'Approved'
-                            ? 'BRD Approved ✓'
-                            : note.status == 'Pending Review'
-                                ? 'BRD Ready — tap Assign Reviewer to start review'
-                                : note.status == 'In Review'
-                                    ? 'Under Review by @${note.reviewerGithubUsername}'
-                                    : 'Changes Requested',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: _statusColors[note.status] ??
-                                cs.primary),
-                      ),
-                      if (note.githubIssueUrl != null &&
-                          note.status != 'Pending Review')
-                        const Text(
-                            'GitHub issue linked · comments trigger AI updates',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(
+                      note.status == 'Approved'
+                          ? Icons.check_circle_rounded
+                          : note.status == 'Pending Review'
+                              ? Icons.hourglass_top_rounded
+                              : Icons.rate_review_rounded,
+                      size: 16,
+                      color: _statusColors[note.status] ?? cs.primary,
+                    ),
+                    const Gap(8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            note.status == 'Approved'
+                                ? 'BRD Approved ✓'
+                                : note.status == 'Pending Review'
+                                    ? 'BRD Ready — tap Assign Reviewer to start review'
+                                    : note.status == 'In Review'
+                                        ? 'Under Review'
+                                        : 'Changes Requested',
                             style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF6B7A8D))),
-                    ],
-                  ),
-                ),
-              ]),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: _statusColors[note.status] ??
+                                    cs.primary),
+                          ),
+                          if (note.githubIssueUrl != null &&
+                              note.status != 'Pending Review')
+                            const Text(
+                                'GitHub issue linked · comments trigger AI updates',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF6B7A8D))),
+                        ],
+                      ),
+                    ),
+                  ]),
+                  // Reviewer list with per-person status
+                  if (note.reviewers.isNotEmpty) ...[
+                    const Gap(10),
+                    const Divider(height: 1),
+                    const Gap(8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: note.reviewers.map((r) {
+                        final approved = r.status == 'Approved';
+                        final color = approved
+                            ? const Color(0xFF43A047)
+                            : const Color(0xFF1E88E5);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: color.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(
+                              approved
+                                  ? Icons.check_circle_rounded
+                                  : Icons.hourglass_empty_rounded,
+                              size: 12,
+                              color: color,
+                            ),
+                            const Gap(4),
+                            Text(
+                              '@${r.githubUsername}',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: color),
+                            ),
+                            const Gap(4),
+                            Text(
+                              approved ? 'Approved' : 'Pending',
+                              style: TextStyle(
+                                  fontSize: 10, color: color),
+                            ),
+                          ]),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         SliverToBoxAdapter(
@@ -2040,25 +2504,34 @@ class _NotesHistoryTabState extends ConsumerState<_NotesHistoryTab> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
-            // Wiki URL pill
+            // Wiki URL pills (supports multiple newline-separated URLs)
             if (widget.note.wikiUrl != null) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                    color: kPrimaryLight,
-                    borderRadius: BorderRadius.circular(8)),
-                child: Row(children: [
-                  const Icon(Icons.link_rounded,
-                      size: 16, color: kPrimary),
-                  const Gap(6),
-                  Expanded(
-                    child: Text(widget.note.wikiUrl!,
-                        style: const TextStyle(
-                            fontSize: 12, color: kPrimary),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                ]),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: widget.note.wikiUrl!
+                    .split('\n')
+                    .where((u) => u.trim().isNotEmpty)
+                    .map((url) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                              color: kPrimaryLight,
+                              borderRadius: BorderRadius.circular(8)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.link_rounded,
+                                size: 14, color: kPrimary),
+                            const Gap(5),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 260),
+                              child: Text(url,
+                                  style: const TextStyle(
+                                      fontSize: 11, color: kPrimary),
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                          ]),
+                        ))
+                    .toList(),
               ),
               const Gap(16),
             ],
