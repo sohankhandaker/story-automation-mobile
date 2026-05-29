@@ -18,6 +18,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  final _nameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _passFocus = FocusNode();
   bool _isRegister = false;
   bool _obscure = true;
   late final AnimationController _fadeCtrl;
@@ -39,6 +42,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
+    _nameFocus.dispose();
+    _emailFocus.dispose();
+    _passFocus.dispose();
     _fadeCtrl.dispose();
     super.dispose();
   }
@@ -56,11 +62,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   void _toggleMode() {
+    ref.read(authProvider.notifier).clearError();
+    _formKey.currentState?.reset();
+    _passCtrl.clear();
     _fadeCtrl.reset();
-    setState(() {
-      _isRegister = !_isRegister;
-    });
+    setState(() => _isRegister = !_isRegister);
     _fadeCtrl.forward();
+    // Move focus to first field of new mode
+    final scope = FocusScope.of(context);
+    Future.microtask(() => scope.requestFocus(_isRegister ? _nameFocus : _emailFocus));
   }
 
   @override
@@ -118,8 +128,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             if (_isRegister) ...[
                               _Field(
                                 controller: _nameCtrl,
+                                focusNode: _nameFocus,
                                 label: 'Full name',
                                 icon: Icons.person_outline_rounded,
+                                textCapitalization: TextCapitalization.words,
+                                textInputAction: TextInputAction.next,
+                                onFieldSubmitted: (_) => FocusScope.of(context)
+                                    .requestFocus(_emailFocus),
                                 validator: (v) =>
                                     v!.isEmpty ? 'Required' : null,
                               ),
@@ -127,17 +142,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             ],
                             _Field(
                               controller: _emailCtrl,
+                              focusNode: _emailFocus,
                               label: 'Email address',
                               icon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              onFieldSubmitted: (_) => FocusScope.of(context)
+                                  .requestFocus(_passFocus),
                               validator: (v) => v!.isEmpty ? 'Required' : null,
                             ),
                             const Gap(14),
                             _Field(
                               controller: _passCtrl,
+                              focusNode: _passFocus,
                               label: 'Password',
                               icon: Icons.lock_outline_rounded,
                               obscureText: _obscure,
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) => _submit(),
                               validator: (v) =>
                                   v!.length < 6 ? 'Min 6 characters' : null,
                               suffixIcon: IconButton(
@@ -187,14 +209,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               fontSize: 14,
                             ),
                           ),
-                          GestureDetector(
+                          InkWell(
                             onTap: _toggleMode,
-                            child: Text(
-                              _isRegister ? 'Sign In' : 'Register',
-                              style: const TextStyle(
-                                color: kPrimary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 14),
+                              child: Text(
+                                _isRegister ? 'Sign In' : 'Register',
+                                style: const TextStyle(
+                                  color: kPrimary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                           ),
@@ -482,10 +509,14 @@ class _ErrorBanner extends StatelessWidget {
 
 class _Field extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String label;
   final IconData icon;
   final bool obscureText;
   final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final TextInputAction? textInputAction;
+  final void Function(String)? onFieldSubmitted;
   final String? Function(String?)? validator;
   final Widget? suffixIcon;
 
@@ -493,8 +524,12 @@ class _Field extends StatelessWidget {
     required this.controller,
     required this.label,
     required this.icon,
+    this.focusNode,
     this.obscureText = false,
     this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.textInputAction,
+    this.onFieldSubmitted,
     this.validator,
     this.suffixIcon,
   });
@@ -503,8 +538,14 @@ class _Field extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      textInputAction: textInputAction,
+      onFieldSubmitted: onFieldSubmitted,
+      autocorrect: !obscureText,
+      enableSuggestions: !obscureText,
       validator: validator,
       style: const TextStyle(fontSize: 15, color: Color(0xFF0D1B2A)),
       decoration: InputDecoration(
