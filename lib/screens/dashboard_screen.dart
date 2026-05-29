@@ -43,24 +43,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SettingsTab(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.note_alt_outlined),
-            selectedIcon: Icon(Icons.note_alt_rounded),
-            label: 'Notes',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings_rounded),
-            label: 'Settings',
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(height: 1, color: const Color(0xFFF0F3F8)),
+          NavigationBar(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard_rounded),
+                label: 'Dashboard',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.note_alt_outlined),
+                selectedIcon: Icon(Icons.note_alt_rounded),
+                label: 'Notes',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings_rounded),
+                label: 'Settings',
+              ),
+            ],
           ),
         ],
       ),
@@ -205,46 +211,138 @@ class _WelcomeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hour = DateTime.now().hour;
+    final now = DateTime.now();
+    final hour = now.hour;
     final greeting = hour < 12
         ? 'Good morning'
         : hour < 17
             ? 'Good afternoon'
             : 'Good evening';
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final dateStr = '${months[now.month - 1]} ${now.day}, ${now.year}';
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [kPrimary, Color(0xFF0A5FC4)],
+          colors: [Color(0xFF04111F), Color(0xFF0A3468), Color(0xFF0D6FD8)],
+          stops: [0.0, 0.5, 1.0],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: kPrimary.withValues(alpha: 0.22),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$greeting! 👋',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+          // Decorative ring
+          Positioned(
+            right: -20,
+            top: -30,
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  width: 1,
                 ),
-                const Gap(4),
-                const Text(
-                  'Your BRD → PRD pipeline at a glance.',
-                  style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 13),
-                ),
-              ],
+              ),
             ),
           ),
-          const Icon(Icons.auto_awesome_rounded, color: Color(0xCCFFFFFF), size: 36),
+          Positioned(
+            right: 10,
+            bottom: -20,
+            child: Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: const Color(0xFF40A9FF).withValues(alpha: 0.18),
+                  width: 1,
+                ),
+              ),
+            ),
+          ),
+          // Content
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 4,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF40A9FF),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const Gap(7),
+                        Text(
+                          dateStr,
+                          style: const TextStyle(
+                            color: Color(0x99FFFFFF),
+                            fontSize: 11.5,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(10),
+                    Text(
+                      greeting,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        height: 1,
+                      ),
+                    ),
+                    const Gap(6),
+                    const Text(
+                      'BRD → PRD pipeline overview',
+                      style: TextStyle(
+                        color: Color(0xB3FFFFFF),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -340,59 +438,56 @@ class _BigStatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              color.withValues(alpha: 0.12),
-              color.withValues(alpha: 0.04),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.22)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(9),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: color.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: Icon(icon, color: color, size: 18),
             ),
             const Gap(12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                    height: 1,
-                  ),
-                ),
-                const Gap(2),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
-                ),
-                Text(
-                  sublabel,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: color.withValues(alpha: 0.7),
-                  ),
-                ),
-              ],
+            Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0D1B2A),
+                letterSpacing: -0.5,
+                height: 1,
+              ),
+            ),
+            const Gap(3),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0D1B2A),
+              ),
+            ),
+            Text(
+              sublabel,
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: Color(0xFF8896A5),
+              ),
             ),
           ],
         ),
@@ -417,19 +512,19 @@ class _StatusTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 112,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      width: 116,
+      padding: const EdgeInsets.fromLTRB(13, 13, 13, 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.14),
-            color.withValues(alpha: 0.04),
-          ],
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.28), width: 1.2),
+        border: Border.all(color: color.withValues(alpha: 0.20), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,17 +536,18 @@ class _StatusTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.18),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: color, size: 15),
+                child: Icon(icon, color: color, size: 14),
               ),
               Text(
                 '$count',
                 style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: count > 0 ? const Color(0xFF0D1B2A) : const Color(0xFFCBD5E1),
+                  letterSpacing: -0.5,
                   height: 1,
                 ),
               ),
@@ -460,11 +556,11 @@ class _StatusTile extends StatelessWidget {
           const Spacer(),
           Text(
             status,
-            style: TextStyle(
-              fontSize: 11,
+            style: const TextStyle(
+              fontSize: 10.5,
               fontWeight: FontWeight.w600,
-              color: color.withValues(alpha: 0.85),
-              height: 1.2,
+              color: Color(0xFF5A6A7E),
+              height: 1.25,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -523,18 +619,40 @@ class _NoteSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final (_, color) = _statusMeta[note.status] ?? (Icons.circle, kPrimary);
+    final (icon, color) = _statusMeta[note.status] ??
+        (Icons.circle_outlined, kPrimary);
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8EDF5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
           child: Row(
             children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 17, color: color),
+              ),
+              const Gap(12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,22 +662,23 @@ class _NoteSummaryCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 14),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: Color(0xFF0D1B2A),
+                      ),
                     ),
-                    const Gap(6),
+                    const Gap(4),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                          horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
+                        color: color.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: color.withValues(alpha: 0.3), width: 1),
                       ),
                       child: Text(
                         note.status,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w600,
                           color: color,
                         ),
@@ -568,7 +687,11 @@ class _NoteSummaryCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFFCBD5E1),
+                size: 20,
+              ),
             ],
           ),
         ),
@@ -587,22 +710,32 @@ class _EmptyState extends StatelessWidget {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
             color: kPrimaryLight,
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(24),
           ),
-          child: const Icon(Icons.note_alt_outlined, size: 48, color: kPrimary),
+          child: const Icon(Icons.note_alt_outlined, size: 38, color: kPrimary),
         ),
-        const Gap(16),
+        const Gap(18),
         const Text(
           'No meeting notes yet',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: Color(0xFF0D1B2A),
+            letterSpacing: -0.2,
+          ),
         ),
-        const Gap(6),
+        const Gap(7),
         const Text(
-          'Go to Notes tab to add your first meeting note',
-          style: TextStyle(color: Color(0xFF6B7A8D), fontSize: 14),
+          'Tap Notes to capture your first\nmeeting and start the BRD pipeline.',
+          style: TextStyle(
+            color: Color(0xFF6B7A8D),
+            fontSize: 13.5,
+            height: 1.5,
+          ),
           textAlign: TextAlign.center,
         ),
       ],

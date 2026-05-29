@@ -5,7 +5,6 @@ import 'package:gap/gap.dart';
 import '../app.dart';
 import '../providers/auth_provider.dart';
 import '../models/user.dart';
-import 'login_screen.dart';
 
 class SettingsTab extends ConsumerStatefulWidget {
   const SettingsTab({super.key});
@@ -167,12 +166,7 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
     );
     if (confirmed != true) return;
     await ref.read(authProvider.notifier).logout();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (_) => false,
-      );
-    }
+    // _AppRoot in app.dart observes auth state and routes to LoginScreen
   }
 
   @override

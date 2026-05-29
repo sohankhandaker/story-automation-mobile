@@ -4,7 +4,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import '../app.dart';
 import '../providers/auth_provider.dart';
-import 'dashboard_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -13,19 +12,34 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _isRegister = false;
   bool _obscure = true;
+  late final AnimationController _fadeCtrl;
+  late final Animation<double> _fadeAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _fadeCtrl.forward();
+  }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
+    _fadeCtrl.dispose();
     super.dispose();
   }
 
@@ -33,16 +47,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     final auth = ref.read(authProvider.notifier);
     if (_isRegister) {
-      await auth.register(_nameCtrl.text.trim(), _emailCtrl.text.trim(), _passCtrl.text);
+      await auth.register(
+          _nameCtrl.text.trim(), _emailCtrl.text.trim(), _passCtrl.text);
     } else {
       await auth.login(_emailCtrl.text.trim(), _passCtrl.text);
     }
-    final state = ref.read(authProvider);
-    if (state.isAuthenticated && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
-      );
-    }
+    // Navigation is handled by _AppRoot reacting to auth state change
+  }
+
+  void _toggleMode() {
+    _fadeCtrl.reset();
+    setState(() {
+      _isRegister = !_isRegister;
+    });
+    _fadeCtrl.forward();
   }
 
   @override
@@ -52,6 +70,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: SingleChildScrollView(
         physics: const ClampingScrollPhysics(),
         child: ConstrainedBox(
@@ -59,130 +78,130 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Header(size: size),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      _isRegister ? 'Create account' : 'Welcome back',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0D1B2A),
+              _HeroHeader(size: size),
+              FadeTransition(
+                opacity: _fadeAnim,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Title
+                      Text(
+                        _isRegister ? 'Create account' : 'Welcome back',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0D1B2A),
+                          letterSpacing: -0.5,
+                        ),
                       ),
-                    ),
-                    const Gap(4),
-                    Text(
-                      _isRegister
-                          ? 'Sign up to start automating your stories'
-                          : 'Sign in to continue to Story Automation',
-                      style: const TextStyle(fontSize: 14, color: Color(0xFF6B7A8D)),
-                    ),
-                    const Gap(28),
-                    Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (_isRegister) ...[
+                      const Gap(5),
+                      Text(
+                        _isRegister
+                            ? 'Sign up to start automating your stories'
+                            : 'Sign in to continue to Story Automation',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7A8D),
+                          height: 1.4,
+                        ),
+                      ),
+                      const Gap(28),
+
+                      // Form
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_isRegister) ...[
+                              _Field(
+                                controller: _nameCtrl,
+                                label: 'Full name',
+                                icon: Icons.person_outline_rounded,
+                                validator: (v) =>
+                                    v!.isEmpty ? 'Required' : null,
+                              ),
+                              const Gap(14),
+                            ],
                             _Field(
-                              controller: _nameCtrl,
-                              label: 'Full name',
-                              icon: Icons.person_outline_rounded,
+                              controller: _emailCtrl,
+                              label: 'Email address',
+                              icon: Icons.email_outlined,
+                              keyboardType: TextInputType.emailAddress,
                               validator: (v) => v!.isEmpty ? 'Required' : null,
                             ),
                             const Gap(14),
-                          ],
-                          _Field(
-                            controller: _emailCtrl,
-                            label: 'Email address',
-                            icon: Icons.email_outlined,
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (v) => v!.isEmpty ? 'Required' : null,
-                          ),
-                          const Gap(14),
-                          _Field(
-                            controller: _passCtrl,
-                            label: 'Password',
-                            icon: Icons.lock_outline_rounded,
-                            obscureText: _obscure,
-                            validator: (v) => v!.length < 6 ? 'Min 6 characters' : null,
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                                size: 20,
-                                color: const Color(0xFF6B7A8D),
-                              ),
-                              onPressed: () => setState(() => _obscure = !_obscure),
-                            ),
-                          ),
-                          if (state.error != null) ...[
-                            const Gap(12),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF0F0),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFFFCDD2)),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.error_outline, size: 16, color: Colors.red),
-                                  const Gap(8),
-                                  Expanded(
-                                    child: Text(
-                                      state.error!,
-                                      style: const TextStyle(color: Colors.red, fontSize: 13),
-                                    ),
-                                  ),
-                                ],
+                            _Field(
+                              controller: _passCtrl,
+                              label: 'Password',
+                              icon: Icons.lock_outline_rounded,
+                              obscureText: _obscure,
+                              validator: (v) =>
+                                  v!.length < 6 ? 'Min 6 characters' : null,
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscure
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 20,
+                                  color: const Color(0xFF8896A5),
+                                ),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
                               ),
                             ),
-                          ],
-                          const Gap(24),
-                          SizedBox(
-                            height: 50,
-                            child: FilledButton(
+
+                            // Error
+                            if (state.error != null) ...[
+                              const Gap(14),
+                              _ErrorBanner(message: state.error!),
+                            ],
+
+                            const Gap(24),
+
+                            // Submit button
+                            _GradientButton(
+                              loading: state.loading,
+                              label:
+                                  _isRegister ? 'Create Account' : 'Sign In',
                               onPressed: state.loading ? null : _submit,
-                              child: state.loading
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : Text(_isRegister ? 'Create Account' : 'Sign In'),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const Gap(22),
+
+                      // Toggle
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _isRegister
+                                ? 'Already have an account? '
+                                : "Don't have an account? ",
+                            style: const TextStyle(
+                              color: Color(0xFF6B7A8D),
+                              fontSize: 14,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _toggleMode,
+                            child: Text(
+                              _isRegister ? 'Sign In' : 'Register',
+                              style: const TextStyle(
+                                color: kPrimary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const Gap(20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _isRegister ? 'Already have an account? ' : "Don't have an account? ",
-                          style: const TextStyle(color: Color(0xFF6B7A8D), fontSize: 14),
-                        ),
-                        GestureDetector(
-                          onTap: () => setState(() => _isRegister = !_isRegister),
-                          child: Text(
-                            _isRegister ? 'Sign in' : 'Register',
-                            style: const TextStyle(
-                              color: kPrimary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -193,62 +212,273 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-class _Header extends StatelessWidget {
+// ── Hero header ────────────────────────────────────────────────────────────────
+
+class _HeroHeader extends StatelessWidget {
   final Size size;
-  const _Header({required this.size});
+  const _HeroHeader({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: size.height * 0.40,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Gradient background
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF04111F),
+                  Color(0xFF0A3468),
+                  Color(0xFF0D6FD8),
+                ],
+                stops: [0.0, 0.5, 1.0],
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(32),
+                bottomRight: Radius.circular(32),
+              ),
+            ),
+          ),
+
+          // Decorative rings
+          Positioned(
+            top: -60,
+            right: -50,
+            child: _ring(220, Colors.white, 0.05),
+          ),
+          Positioned(
+            top: 20,
+            right: 30,
+            child: _ring(100, const Color(0xFF188BFF), 0.15),
+          ),
+          Positioned(
+            bottom: -80,
+            left: -60,
+            child: _ring(240, const Color(0xFF188BFF), 0.08),
+          ),
+          Positioned(
+            top: size.height * 0.14,
+            right: 24,
+            child: _glowDot(12, const Color(0xFF40A9FF), 0.6),
+          ),
+          Positioned(
+            top: size.height * 0.06,
+            left: size.width * 0.45,
+            child: _glowDot(6, Colors.white, 0.3),
+          ),
+
+          // Content
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // SELISE logo
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: SvgPicture.asset(
+                      'assets/images/selise_logo_white.svg',
+                      height: 22,
+                      colorFilter: const ColorFilter.mode(
+                          Colors.white, BlendMode.srcIn),
+                    ),
+                  ),
+                  const Gap(20),
+                  const Text(
+                    'Story Automation',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                    ),
+                  ),
+                  const Gap(6),
+                  Row(
+                    children: [
+                      Container(
+                        width: 3,
+                        height: 3,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF40A9FF),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const Gap(8),
+                      const Text(
+                        'BRD · PRD · GitHub — AI does the rest',
+                        style: TextStyle(
+                          color: Color(0xB3FFFFFF),
+                          fontSize: 13.5,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ring(double size, Color color, double opacity) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: color.withValues(alpha: opacity),
+          width: 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _glowDot(double size, Color color, double opacity) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: opacity),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: opacity * 0.5),
+            blurRadius: size * 2,
+            spreadRadius: size * 0.5,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Gradient submit button ─────────────────────────────────────────────────────
+
+class _GradientButton extends StatelessWidget {
+  final bool loading;
+  final String label;
+  final VoidCallback? onPressed;
+
+  const _GradientButton({
+    required this.loading,
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: onPressed != null
+              ? const LinearGradient(
+                  colors: [Color(0xFF188BFF), Color(0xFF0A6FE8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: onPressed == null ? kPrimary.withValues(alpha: 0.4) : null,
+          boxShadow: onPressed != null
+              ? [
+                  BoxShadow(
+                    color: kPrimary.withValues(alpha: 0.30),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: ElevatedButton(
+          onPressed: onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            padding: EdgeInsets.zero,
+          ),
+          child: loading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Error banner ───────────────────────────────────────────────────────────────
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  const _ErrorBanner({required this.message});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: size.height * 0.36,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF188BFF), Color(0xFF0A5FC4)],
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF2F2),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFFCDD2)),
       ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              SvgPicture.asset(
-                'assets/images/selise_logo_white.svg',
-                height: 36,
-                colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: 16, color: Color(0xFFEF4444)),
+          const Gap(9),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFFB91C1C),
+                fontSize: 13,
+                height: 1.3,
               ),
-              const Gap(20),
-              const Text(
-                'Story Automation',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const Gap(6),
-              const Text(
-                'Chat your requirements — AI does the rest',
-                style: TextStyle(
-                  color: Color(0xB3FFFFFF),
-                  fontSize: 14,
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 }
+
+// ── Text field ─────────────────────────────────────────────────────────────────
 
 class _Field extends StatelessWidget {
   final TextEditingController controller;
@@ -276,10 +506,10 @@ class _Field extends StatelessWidget {
       obscureText: obscureText,
       keyboardType: keyboardType,
       validator: validator,
-      style: const TextStyle(fontSize: 15),
+      style: const TextStyle(fontSize: 15, color: Color(0xFF0D1B2A)),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, size: 20, color: const Color(0xFF6B7A8D)),
+        prefixIcon: Icon(icon, size: 19, color: const Color(0xFF8896A5)),
         suffixIcon: suffixIcon,
       ),
     );

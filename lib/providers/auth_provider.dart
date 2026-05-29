@@ -5,22 +5,37 @@ import '../core/api.dart';
 import '../core/storage.dart';
 import '../models/user.dart';
 
-
 class AuthState {
   final User? user;
   final bool loading;
+  final bool initializing;
   final String? error;
 
-  AuthState({this.user, this.loading = false, this.error});
+  AuthState({
+    this.user,
+    this.loading = false,
+    this.initializing = false,
+    this.error,
+  });
 
-  AuthState copyWith({User? user, bool? loading, String? error}) =>
-      AuthState(user: user ?? this.user, loading: loading ?? this.loading, error: error);
+  AuthState copyWith({
+    User? user,
+    bool? loading,
+    bool? initializing,
+    String? error,
+  }) =>
+      AuthState(
+        user: user ?? this.user,
+        loading: loading ?? this.loading,
+        initializing: initializing ?? this.initializing,
+        error: error,
+      );
 
   bool get isAuthenticated => user != null;
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier() : super(AuthState()) {
+  AuthNotifier() : super(AuthState(initializing: true)) {
     ApiClient.onUnauthorized = () => state = AuthState();
     _restoreSession();
   }
@@ -30,9 +45,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (userJson != null) {
       try {
         final user = User.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
-        state = AuthState(user: user);
+        state = AuthState(user: user, initializing: false);
+        return;
       } catch (_) {}
     }
+    state = state.copyWith(initializing: false);
   }
 
   Future<void> register(String name, String email, String password) async {
