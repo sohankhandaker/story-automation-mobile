@@ -18,11 +18,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
   final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
   final _passFocus = FocusNode();
+  final _confirmPassFocus = FocusNode();
   bool _isRegister = false;
   bool _obscure = true;
+  bool _confirmObscure = true;
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fadeAnim;
 
@@ -35,6 +38,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
+
+    // Clear API error as soon as the user edits any field
+    for (final ctrl in [_nameCtrl, _emailCtrl, _passCtrl, _confirmPassCtrl]) {
+      ctrl.addListener(_clearApiError);
+    }
+  }
+
+  void _clearApiError() {
+    if (ref.read(authProvider).error != null) {
+      ref.read(authProvider.notifier).clearError();
+    }
   }
 
   @override
@@ -42,9 +56,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
+    _confirmPassCtrl.dispose();
     _nameFocus.dispose();
     _emailFocus.dispose();
     _passFocus.dispose();
+    _confirmPassFocus.dispose();
     _fadeCtrl.dispose();
     super.dispose();
   }
@@ -65,10 +81,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     ref.read(authProvider.notifier).clearError();
     _formKey.currentState?.reset();
     _passCtrl.clear();
+    _confirmPassCtrl.clear();
     _fadeCtrl.reset();
-    setState(() => _isRegister = !_isRegister);
+    setState(() {
+      _isRegister = !_isRegister;
+      _obscure = true;
+      _confirmObscure = true;
+    });
     _fadeCtrl.forward();
-    // Move focus to first field of new mode
     final scope = FocusScope.of(context);
     Future.microtask(() => scope.requestFocus(_isRegister ? _nameFocus : _emailFocus));
   }
@@ -149,7 +169,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               textInputAction: TextInputAction.next,
                               onFieldSubmitted: (_) => FocusScope.of(context)
                                   .requestFocus(_passFocus),
-                              validator: (v) => v!.isEmpty ? 'Required' : null,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Required';
+                                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                    .hasMatch(v)) {
+                                  return 'Enter a valid email address';
+                                }
+                                return null;
+                              },
                             ),
                             const Gap(14),
                             _Field(
@@ -158,8 +185,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               label: 'Password',
                               icon: Icons.lock_outline_rounded,
                               obscureText: _obscure,
-                              textInputAction: TextInputAction.done,
-                              onFieldSubmitted: (_) => _submit(),
+                              helperText: _isRegister ? 'At least 6 characters' : null,
+                              textInputAction: _isRegister
+                                  ? TextInputAction.next
+                                  : TextInputAction.done,
+                              onFieldSubmitted: (_) => _isRegister
+                                  ? FocusScope.of(context)
+                                      .requestFocus(_confirmPassFocus)
+                                  : _submit(),
                               validator: (v) =>
                                   v!.length < 6 ? 'Min 6 characters' : null,
                               suffixIcon: IconButton(
@@ -174,6 +207,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     setState(() => _obscure = !_obscure),
                               ),
                             ),
+                            if (_isRegister) ...[
+                              const Gap(14),
+                              _Field(
+                                controller: _confirmPassCtrl,
+                                focusNode: _confirmPassFocus,
+                                label: 'Confirm password',
+                                icon: Icons.lock_outline_rounded,
+                                obscureText: _confirmObscure,
+                                textInputAction: TextInputAction.done,
+                                onFieldSubmitted: (_) => _submit(),
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) return 'Required';
+                                  if (v != _passCtrl.text) {
+                                    return 'Passwords do not match';
+                                  }
+                                  return null;
+                                },
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _confirmObscure
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: 20,
+                                    color: const Color(0xFF8896A5),
+                                  ),
+                                  onPressed: () => setState(
+                                      () => _confirmObscure = !_confirmObscure),
+                                ),
+                              ),
+                            ],
 
                             // Error
                             if (state.error != null) ...[
@@ -519,6 +582,7 @@ class _Field extends StatelessWidget {
   final void Function(String)? onFieldSubmitted;
   final String? Function(String?)? validator;
   final Widget? suffixIcon;
+  final String? helperText;
 
   const _Field({
     required this.controller,
@@ -532,6 +596,7 @@ class _Field extends StatelessWidget {
     this.onFieldSubmitted,
     this.validator,
     this.suffixIcon,
+    this.helperText,
   });
 
   @override
@@ -552,6 +617,8 @@ class _Field extends StatelessWidget {
         labelText: label,
         prefixIcon: Icon(icon, size: 19, color: const Color(0xFF8896A5)),
         suffixIcon: suffixIcon,
+        helperText: helperText,
+        helperStyle: const TextStyle(fontSize: 12, color: Color(0xFF8896A5)),
       ),
     );
   }
