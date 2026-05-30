@@ -839,8 +839,8 @@ class _PrdDetailScreenState extends ConsumerState<_PrdDetailScreen>
     return TabBarView(
       controller: _tabController,
       children: [
-        _PrdContentTab(prd: _prd, noteId: widget.noteId),
-        _PrdVersionsTab(
+        PrdContentTab(prd: _prd, noteId: widget.noteId),
+        PrdVersionsTab(
             noteId: widget.noteId,
             currentVersionNumber: _prd.currentVersionNumber),
       ],
@@ -850,11 +850,11 @@ class _PrdDetailScreenState extends ConsumerState<_PrdDetailScreen>
 
 // ── PRD Content tab ───────────────────────────────────────────────────────────
 
-class _PrdContentTab extends ConsumerWidget {
+class PrdContentTab extends ConsumerWidget {
   final PrdDocument prd;
   final String noteId;
 
-  const _PrdContentTab({required this.prd, required this.noteId});
+  const PrdContentTab({super.key, required this.prd, required this.noteId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1058,19 +1058,19 @@ class _PrdContentTab extends ConsumerWidget {
 
 // ── PRD Versions tab ──────────────────────────────────────────────────────────
 
-class _PrdVersionsTab extends ConsumerStatefulWidget {
+class PrdVersionsTab extends ConsumerStatefulWidget {
   final String noteId;
   final int currentVersionNumber;
 
-  const _PrdVersionsTab(
-      {required this.noteId, required this.currentVersionNumber});
+  const PrdVersionsTab(
+      {super.key, required this.noteId, required this.currentVersionNumber});
 
   @override
-  ConsumerState<_PrdVersionsTab> createState() =>
+  ConsumerState<PrdVersionsTab> createState() =>
       _PrdVersionsTabState();
 }
 
-class _PrdVersionsTabState extends ConsumerState<_PrdVersionsTab> {
+class _PrdVersionsTabState extends ConsumerState<PrdVersionsTab> {
   late Future<List<PrdVersion>> _versionsFuture;
 
   @override

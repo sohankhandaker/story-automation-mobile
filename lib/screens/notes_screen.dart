@@ -20,6 +20,20 @@ import 'prd_screen.dart';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Phases 1-2 are prep (crawl + analyze), phases 3-9 map to BRD phases 1-7
+const _prdPhaseNames = [
+  '',
+  'Document Header, Purpose & Product Summary',
+  'Product Goals, Non-Goals, Target Users & Platforms',
+  'MVP Scope & Core Concepts',
+  'Architecture & User Flows',
+  'State Machines & Functional Requirements',
+  'Screen Requirements & Data Model',
+  'API Contract & Permissions Matrix',
+  'Validation Rules, Notifications & Reporting',
+  'NFRs, Error Handling & Edge Cases',
+  'AI Coding Guidance & User Stories',
+];
+
 const _brdPhaseNames = [
   '',
   'Crawling Links & Extracting Context',
@@ -1769,24 +1783,39 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   late MeetingNote _note;
   Timer? _pollTimer;
   TabController? _tabController;
-  int _entryVersion = 0; // increments on each entry add to force list refresh
+  int _entryVersion = 0;
 
-  // Draft: notes collected, no BRD yet, not working
+  // ── Pipeline phase ────────────────────────────────────────────────────────
+  String _phase = 'brd'; // 'brd' | 'prd'
+  PrdDocument? _prd;
+  Timer? _prdPollTimer;
+  TabController? _prdTabController;
+
+  // ── BRD getters ───────────────────────────────────────────────────────────
   bool get _isDraft =>
       _note.status == 'Draft' && _note.brdGenerationPhase == null;
-
-  // Working: pipeline running (initial or update)
   bool get _isWorking =>
       _note.brdGenerationPhase != null || _note.status == 'In Progress';
-
-  // BRD exists and not actively regenerating
   bool get _brdReady => _note.brdDraft != null && !_isWorking;
-
-  // Poll while generating or while under active review (to catch updates)
   bool get _shouldPoll =>
       _isWorking ||
       _note.status == 'In Review' ||
       _note.status == 'Changes Requested';
+
+  // ── PRD getters ───────────────────────────────────────────────────────────
+  bool get _prdIsWorking =>
+      _prd != null &&
+      (_prd!.prdGenerationPhase != null || _prd!.status == 'In Progress');
+  bool get _prdReady => _prd != null && _prd!.prdDraft != null && !_prdIsWorking;
+  bool get _prdShouldPoll =>
+      _prd != null &&
+      (_prdIsWorking ||
+          _prd!.status == 'In Review' ||
+          _prd!.status == 'Changes Requested');
+
+  // Show pipeline stepper once BRD is approved or PRD has started
+  bool get _showPipeline =>
+      _note.status == 'Approved' || _prd != null;
 
   @override
   void initState() {
@@ -1794,6 +1823,10 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
     _note = widget.note;
     if (_brdReady) _initTabs();
     if (_shouldPoll) _startPolling();
+    if (_note.status == 'Approved') {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _fetchAndInitPrd());
+    }
   }
 
   void _initTabs() {
@@ -1888,10 +1921,133 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
     );
   }
 
+  // ── PRD phase methods ─────────────────────────────────────────────────────
+
+  void _initPrdTabs() {
+    _prdTabController?.dispose();
+    _prdTabController = TabController(length: 2, vsync: this);
+  }
+
+  Future<void> _fetchAndInitPrd() async {
+    if (!mounted) return;
+    try {
+      await ref.read(prdProvider(_note.id).notifier).fetchPrd(_note.id);
+      if (!mounted) return;
+      final prd = ref.read(prdProvider(_note.id)).valueOrNull;
+      setState(() {
+        _prd = prd;
+        if (_prdReady && _prdTabController == null) _initPrdTabs();
+      });
+      if (_prdShouldPoll) _startPrdPolling();
+    } catch (_) {}
+  }
+
+  void _startPrdPolling() {
+    _prdPollTimer?.cancel();
+    _prdPollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      final updated = await ref
+          .read(prdProvider(_note.id).notifier)
+          .pollPrd(_note.id);
+      if (updated != null && mounted) {
+        final wasWorking = _prdIsWorking;
+        setState(() {
+          _prd = updated;
+          if (_prdReady && _prdTabController == null) _initPrdTabs();
+        });
+        if (wasWorking && !_prdIsWorking) {
+          _prdPollTimer?.cancel();
+        }
+      }
+    });
+  }
+
+  Future<void> _generatePrd() async {
+    final updated = await ref
+        .read(prdProvider(_note.id).notifier)
+        .generatePrd(_note.id);
+    if (!mounted) return;
+    if (updated != null) {
+      setState(() {
+        _prd = updated;
+        _phase = 'prd';
+      });
+      _startPrdPolling();
+    }
+  }
+
+  void _openPrdAssignReviewer() {
+    if (_prd == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PrdAssignReviewerSheetInline(
+        prd: _prd!,
+        noteId: _note.id,
+        onAssigned: (updated) {
+          setState(() => _prd = updated);
+          _startPrdPolling();
+        },
+      ),
+    );
+  }
+
+  void _openPrdRequestUpdate() {
+    if (_prd == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PrdUpdateSheetInline(
+        noteId: _note.id,
+        onSubmit: (feedback) async {
+          Navigator.pop(context);
+          final updated = await ref
+              .read(prdProvider(_note.id).notifier)
+              .submitFeedback(_note.id, feedback);
+          if (updated != null && mounted) {
+            setState(() => _prd = updated);
+            _startPrdPolling();
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _sendToPlanner() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Send to Planner'),
+        content: const Text(
+            'This will mark the PRD as sent to the Planner Agent. Continue?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00897B)),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final updated = await ref
+        .read(prdProvider(_note.id).notifier)
+        .sendToPlanner(_note.id);
+    if (updated != null && mounted) setState(() => _prd = updated);
+  }
+
   @override
   void dispose() {
     _pollTimer?.cancel();
     _tabController?.dispose();
+    _prdPollTimer?.cancel();
+    _prdTabController?.dispose();
     super.dispose();
   }
 
@@ -1903,18 +2059,25 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
           ? _buildDraftBody()
           : _isWorking
               ? _buildLoadingBody()
-              : _buildReadyBody(),
+              : _phase == 'prd'
+                  ? _buildPrdBody()
+                  : _buildReadyBody(),
     );
   }
 
   PreferredSizeWidget _buildAppBar() {
+    // Determine title
+    final title = _isDraft
+        ? (_note.title == 'New Note' ? 'Meeting Notes' : (_note.title ?? 'Meeting Notes'))
+        : _isWorking
+            ? 'Generating BRD…'
+            : _phase == 'prd' && _prdIsWorking
+                ? 'Generating PRD…'
+                : (_note.title ?? (_phase == 'prd' ? 'PRD' : 'BRD'));
+
     return AppBar(
       title: Text(
-        _isDraft
-            ? (_note.title == 'New Note' ? 'Meeting Notes' : (_note.title ?? 'Meeting Notes'))
-            : _isWorking
-                ? 'Generating BRD…'
-                : (_note.title ?? 'BRD'),
+        title,
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         overflow: TextOverflow.ellipsis,
       ),
@@ -1922,14 +2085,13 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
         // Mark as Ready — Draft state
         if (_isDraft)
           IconButton(
-            icon: const Icon(Icons.rocket_launch_rounded,
-                color: Color(0xFF1565C0)),
+            icon: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF1565C0)),
             tooltip: 'Start BRD Generation',
             onPressed: _openMarkReady,
           ),
 
-        // Status + actions when BRD exists
-        if (_brdReady) ...[
+        // ── BRD phase actions ─────────────────────────────────────────────
+        if (_brdReady && _phase == 'brd') ...[
           _StatusChip(_note.status),
           const Gap(2),
           if (_note.githubIssueUrl != null)
@@ -1938,92 +2100,87 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               tooltip: 'View on GitHub',
               onPressed: () => launchUrl(Uri.parse(_note.githubIssueUrl!)),
             ),
-          // Assign / re-assign reviewer
           if (_note.status == 'Pending Review' ||
               _note.status == 'In Review' ||
               _note.status == 'Changes Requested')
             IconButton(
-              icon: const Icon(Icons.person_add_rounded,
-                  color: Color(0xFF6A1B9A)),
-              tooltip: _note.reviewers.isNotEmpty
-                  ? 'Add Another Reviewer'
-                  : 'Assign Reviewer',
+              icon: const Icon(Icons.person_add_rounded, color: Color(0xFF6A1B9A)),
+              tooltip: _note.reviewers.isNotEmpty ? 'Add Another Reviewer' : 'Assign Reviewer',
               onPressed: _openAssignReviewer,
             ),
-          // Overflow: Request Update + Copy BRD
-          if (_note.status != 'Pending Review' &&
-              _note.status != 'Approved')
+          if (_note.status != 'Pending Review' && _note.status != 'Approved')
             PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'update') _openRequestUpdate();
                 if (v == 'copy') {
-                  Clipboard.setData(
-                      ClipboardData(text: _note.brdDraft ?? ''));
+                  Clipboard.setData(ClipboardData(text: _note.brdDraft ?? ''));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('BRD copied to clipboard')),
+                    const SnackBar(content: Text('BRD copied to clipboard')),
                   );
                 }
               },
               itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'update',
-                  child: ListTile(
-                    leading: Icon(Icons.edit_note_rounded),
-                    title: Text('Request Update'),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'copy',
-                  child: ListTile(
-                    leading: Icon(Icons.copy_rounded),
-                    title: Text('Copy BRD'),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  ),
-                ),
+                PopupMenuItem(value: 'update', child: ListTile(leading: Icon(Icons.edit_note_rounded), title: Text('Request Update'), contentPadding: EdgeInsets.zero, dense: true)),
+                PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_rounded), title: Text('Copy BRD'), contentPadding: EdgeInsets.zero, dense: true)),
               ],
             ),
-          if (_note.status == 'Approved') ...[
-            IconButton(
-              icon: const Icon(Icons.description_rounded,
-                  color: Color(0xFFE65100)),
-              tooltip: 'Generate PRD',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => PrdScreen(noteId: _note.id)),
-              ),
-            ),
+          if (_note.status == 'Approved')
             IconButton(
               icon: const Icon(Icons.copy_rounded, size: 20),
               tooltip: 'Copy BRD',
               onPressed: () {
-                Clipboard.setData(
-                    ClipboardData(text: _note.brdDraft ?? ''));
+                Clipboard.setData(ClipboardData(text: _note.brdDraft ?? ''));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('BRD copied to clipboard')),
+                  const SnackBar(content: Text('BRD copied to clipboard')),
                 );
               },
             ),
-          ],
+        ],
+
+        // ── PRD phase actions ─────────────────────────────────────────────
+        if (_phase == 'prd' && _prd != null && !_prdIsWorking) ...[
+          _StatusChip(_prd!.status),
+          const Gap(2),
+          if (_prd!.githubIssueUrl != null)
+            IconButton(
+              icon: const Icon(Icons.open_in_new_rounded, size: 20),
+              tooltip: 'View on GitHub',
+              onPressed: () => launchUrl(Uri.parse(_prd!.githubIssueUrl!)),
+            ),
+          if (_prd!.status == 'Pending Review' ||
+              _prd!.status == 'In Review' ||
+              _prd!.status == 'Changes Requested')
+            IconButton(
+              icon: const Icon(Icons.person_add_rounded, color: Color(0xFF6A1B9A)),
+              tooltip: _prd!.reviewers.isNotEmpty ? 'Add Another Reviewer' : 'Assign Reviewer',
+              onPressed: _openPrdAssignReviewer,
+            ),
+          if (_prd!.status == 'In Review' || _prd!.status == 'Changes Requested')
+            IconButton(
+              icon: const Icon(Icons.edit_note_rounded, color: Color(0xFFE53935)),
+              tooltip: 'Request PRD Update',
+              onPressed: _openPrdRequestUpdate,
+            ),
+          if (_prd!.status == 'Approved')
+            IconButton(
+              icon: const Icon(Icons.send_rounded, color: Color(0xFF00897B), size: 20),
+              tooltip: 'Send to Planner',
+              onPressed: _sendToPlanner,
+            ),
+          if (_prd!.prdDraft != null)
+            IconButton(
+              icon: const Icon(Icons.copy_rounded, size: 20),
+              tooltip: 'Copy PRD',
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: _prd!.prdDraft ?? ''));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('PRD copied to clipboard')),
+                );
+              },
+            ),
         ],
       ],
-      bottom: _brdReady && _tabController != null
-          ? TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: 'BRD Draft'),
-                Tab(text: 'Versions'),
-                Tab(text: 'Notes History'),
-              ],
-              labelColor: kPrimary,
-              indicatorColor: kPrimary,
-              unselectedLabelColor: const Color(0xFF8896A5),
-            )
-          : null,
+      bottom: _buildAppBarBottom(),
     );
   }
 
@@ -2129,10 +2286,486 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
         _VersionsTab(note: _note),
         _NotesHistoryTab(
           note: _note,
-          onAddMore: null, // entries locked once pipeline starts
+          onAddMore: null,
           key: ValueKey(_note.currentVersionNumber),
         ),
       ],
+    );
+  }
+
+  // ── AppBar bottom helper ──────────────────────────────────────────────────
+
+  PreferredSizeWidget? _buildAppBarBottom() {
+    const tabStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+
+    Widget? phaseTabs;
+    if (_showPipeline) {
+      if (_phase == 'brd' && _brdReady && _tabController != null) {
+        phaseTabs = TabBar(
+          controller: _tabController,
+          labelStyle: tabStyle,
+          unselectedLabelStyle: tabStyle,
+          tabs: const [Tab(text: 'BRD Draft'), Tab(text: 'Versions'), Tab(text: 'Notes History')],
+          labelColor: kPrimary,
+          indicatorColor: kPrimary,
+          unselectedLabelColor: const Color(0xFF8896A5),
+        );
+      } else if (_phase == 'prd' && _prdReady && _prdTabController != null) {
+        phaseTabs = TabBar(
+          controller: _prdTabController,
+          labelStyle: tabStyle,
+          unselectedLabelStyle: tabStyle,
+          tabs: const [Tab(text: 'PRD Content'), Tab(text: 'Versions')],
+          labelColor: kPrimary,
+          indicatorColor: kPrimary,
+          unselectedLabelColor: const Color(0xFF8896A5),
+        );
+      }
+      final height = phaseTabs != null ? 96.0 : 48.0;
+      return PreferredSize(
+        preferredSize: Size.fromHeight(height),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _PipelineStepper(
+              brdStatus: _note.status,
+              prdStatus: _prd?.status,
+              activePhase: _phase,
+              onBrdTap: () => setState(() => _phase = 'brd'),
+              onPrdTap: _note.status == 'Approved'
+                  ? () {
+                      setState(() => _phase = 'prd');
+                      if (_prd == null) _fetchAndInitPrd();
+                    }
+                  : null,
+            ),
+            if (phaseTabs != null) phaseTabs,
+          ],
+        ),
+      );
+    }
+
+    if (_brdReady && _tabController != null) {
+      return TabBar(
+        controller: _tabController,
+        labelStyle: tabStyle,
+        unselectedLabelStyle: tabStyle,
+        tabs: const [Tab(text: 'BRD Draft'), Tab(text: 'Versions'), Tab(text: 'Notes History')],
+        labelColor: kPrimary,
+        indicatorColor: kPrimary,
+        unselectedLabelColor: const Color(0xFF8896A5),
+      );
+    }
+    return null;
+  }
+
+  // ── PRD phase body ────────────────────────────────────────────────────────
+
+  Widget _buildPrdBody() {
+    if (_prd == null || _prd!.status == 'Draft') {
+      return _buildPrdGeneratePrompt();
+    }
+    if (_prdIsWorking) return _buildPrdLoadingBody();
+    if (_prdReady) return _buildPrdReadyBody();
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  Widget _buildPrdGeneratePrompt() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: kPrimaryLight,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.description_rounded, size: 36, color: kPrimary),
+            ),
+            const Gap(20),
+            const Text(
+              'Generate PRD',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+            ),
+            const Gap(8),
+            const Text(
+              'The BRD is approved. Generate the\nProduct Requirements Document next.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Color(0xFF6B7A8D), height: 1.5),
+            ),
+            const Gap(28),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton.icon(
+                onPressed: _generatePrd,
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: const Text('Generate PRD', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrdLoadingBody() {
+    final isUpdate = _prd!.prdDraft != null && _prd!.prdGenerationPhase == 0;
+    final phase = _prd!.prdGenerationPhase;
+    final totalPhases = _prdPhaseNames.length - 1;
+    final hasPhase = !isUpdate && phase != null && phase > 0 && phase < _prdPhaseNames.length;
+    final phaseVal = hasPhase ? phase : 0;
+    final pct = hasPhase ? phaseVal / totalPhases : (isUpdate ? null : 0.0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 16, height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  value: pct != null && pct > 0 ? pct : null,
+                  color: kPrimary,
+                ),
+              ),
+              const Gap(10),
+              Expanded(
+                child: Text(
+                  hasPhase ? _prdPhaseNames[phaseVal] : (isUpdate ? 'Applying your changes…' : 'Generating PRD…'),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: kPrimary),
+                ),
+              ),
+              if (pct != null)
+                Text('${(pct * 100).round()}%',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimary)),
+            ],
+          ),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: pct, minHeight: 5, backgroundColor: kPrimaryLight, color: kPrimary,
+            ),
+          ),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              hasPhase
+                  ? 'Phase $phaseVal of $totalPhases  ·  ${((pct ?? 0) * 100).round()}% complete'
+                  : (isUpdate ? 'Applying your changes. About 30–60 seconds.' : 'Generating PRD in 10 phases…  About 2–3 minutes.'),
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            ),
+          ),
+        ),
+        Container(height: 1, color: const Color(0xFFE8EDF2)),
+      ],
+    );
+  }
+
+  Widget _buildPrdReadyBody() {
+    if (_prdTabController == null) return const SizedBox.shrink();
+    return TabBarView(
+      controller: _prdTabController,
+      children: [
+        PrdContentTab(prd: _prd!, noteId: _note.id),
+        PrdVersionsTab(noteId: _note.id, currentVersionNumber: _prd!.currentVersionNumber),
+      ],
+    );
+  }
+}
+
+// ── Pipeline stepper ──────────────────────────────────────────────────────────
+
+class _PipelineStepper extends StatelessWidget {
+  final String brdStatus;
+  final String? prdStatus;
+  final String activePhase;
+  final VoidCallback onBrdTap;
+  final VoidCallback? onPrdTap;
+
+  const _PipelineStepper({
+    required this.brdStatus,
+    required this.prdStatus,
+    required this.activePhase,
+    required this.onBrdTap,
+    required this.onPrdTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final brdDone = brdStatus == 'Approved';
+    final prdDone = prdStatus == 'Approved' || prdStatus == 'Sent to Planner';
+    final prdStarted = prdStatus != null && prdStatus != 'Draft';
+
+    return Container(
+      height: 48,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          _StepButton(
+            label: 'BRD',
+            done: brdDone,
+            active: activePhase == 'brd',
+            enabled: true,
+            onTap: onBrdTap,
+          ),
+          Expanded(
+            child: Container(
+              height: 2,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(1),
+                color: prdStarted
+                    ? kPrimary.withValues(alpha: 0.35)
+                    : const Color(0xFFE0E8F0),
+              ),
+            ),
+          ),
+          _StepButton(
+            label: 'PRD',
+            done: prdDone,
+            active: activePhase == 'prd',
+            enabled: onPrdTap != null,
+            onTap: onPrdTap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  final String label;
+  final bool done;
+  final bool active;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _StepButton({
+    required this.label,
+    required this.done,
+    required this.active,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = done
+        ? const Color(0xFF43A047)
+        : active
+            ? kPrimary
+            : const Color(0xFFB0BEC5);
+
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? kPrimary.withValues(alpha: 0.10) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: active ? Border.all(color: kPrimary, width: 1.5) : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (done)
+              const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF43A047))
+            else
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active ? kPrimary : Colors.transparent,
+                  border: active ? null : Border.all(color: const Color(0xFFB0BEC5), width: 1.5),
+                ),
+              ),
+            const Gap(6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── PRD inline sheets (mirror BRD equivalents) ────────────────────────────────
+
+class _PrdAssignReviewerSheetInline extends ConsumerStatefulWidget {
+  final PrdDocument prd;
+  final String noteId;
+  final void Function(PrdDocument) onAssigned;
+
+  const _PrdAssignReviewerSheetInline({
+    required this.prd,
+    required this.noteId,
+    required this.onAssigned,
+  });
+
+  @override
+  ConsumerState<_PrdAssignReviewerSheetInline> createState() =>
+      _PrdAssignReviewerSheetInlineState();
+}
+
+class _PrdAssignReviewerSheetInlineState
+    extends ConsumerState<_PrdAssignReviewerSheetInline> {
+  final _userCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _userCtrl.dispose();
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _assign() async {
+    if (_userCtrl.text.trim().isEmpty) return;
+    setState(() => _loading = true);
+    final updated = await ref
+        .read(prdProvider(widget.noteId).notifier)
+        .assignReviewer(widget.noteId, _userCtrl.text.trim(), _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim());
+    if (updated != null && mounted) {
+      Navigator.pop(context);
+      widget.onAssigned(updated);
+    } else if (mounted) {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.viewInsetsOf(context).bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Assign PRD Reviewer', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const Gap(16),
+          TextField(
+            controller: _nameCtrl,
+            decoration: const InputDecoration(labelText: 'Reviewer Name (optional)'),
+          ),
+          const Gap(12),
+          TextField(
+            controller: _userCtrl,
+            decoration: const InputDecoration(labelText: 'GitHub Username *', hintText: 'e.g. johndoe'),
+          ),
+          const Gap(20),
+          SizedBox(
+            height: 50,
+            child: FilledButton(
+              onPressed: _loading ? null : _assign,
+              child: _loading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Assign Reviewer', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrdUpdateSheetInline extends StatefulWidget {
+  final String noteId;
+  final Future<void> Function(String feedback) onSubmit;
+
+  const _PrdUpdateSheetInline({required this.noteId, required this.onSubmit});
+
+  @override
+  State<_PrdUpdateSheetInline> createState() => _PrdUpdateSheetInlineState();
+}
+
+class _PrdUpdateSheetInlineState extends State<_PrdUpdateSheetInline> {
+  final _ctrl = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.viewInsetsOf(context).bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Request PRD Update', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const Gap(4),
+          const Text('Describe the changes you want. The AI will propose updates for your confirmation.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF6B7A8D), height: 1.4)),
+          const Gap(16),
+          TextField(
+            controller: _ctrl,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'e.g. Section 5 is missing the authentication flow…',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const Gap(16),
+          SizedBox(
+            height: 50,
+            child: FilledButton(
+              onPressed: _loading || _ctrl.text.trim().isEmpty ? null : () async {
+                setState(() => _loading = true);
+                await widget.onSubmit(_ctrl.text.trim());
+              },
+              child: _loading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Submit Feedback', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
