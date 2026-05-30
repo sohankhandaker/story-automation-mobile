@@ -2194,86 +2194,11 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   }
 
   Widget _buildLoadingBody() {
-    final isUpdate =
-        _note.brdDraft != null && _note.brdGenerationPhase == 0;
-    final phase = _note.brdGenerationPhase;
-    final totalPhases = _brdPhaseNames.length - 1;
-    final hasPhase = !isUpdate && phase != null && phase > 0 && phase < _brdPhaseNames.length;
-    final phaseVal = hasPhase ? phase : 0;
-    final pct = hasPhase ? phaseVal / totalPhases : (isUpdate ? null : 0.0);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  value: pct != null && pct > 0 ? pct : null,
-                  color: kPrimary,
-                ),
-              ),
-              const Gap(10),
-              Expanded(
-                child: Text(
-                  hasPhase
-                      ? _brdPhaseNames[phaseVal]
-                      : (isUpdate ? 'Applying your changes…' : 'Generating BRD…'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: kPrimary,
-                  ),
-                ),
-              ),
-              if (pct != null)
-                Text(
-                  '${(pct * 100).round()}%',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: kPrimary,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 5,
-              backgroundColor: kPrimaryLight,
-              color: kPrimary,
-            ),
-          ),
-        ),
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              hasPhase
-                  ? 'Phase $phaseVal of $totalPhases  ·  ${((pct ?? 0) * 100).round()}% complete'
-                  : (isUpdate
-                      ? 'Applying your changes. About 30–60 seconds.'
-                      : 'Crawling links, analyzing notes…  About 1–2 minutes.'),
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            ),
-          ),
-        ),
-        Container(height: 1, color: const Color(0xFFE8EDF2)),
-      ],
+    return GenerationProgressWidget(
+      phase: _note.brdGenerationPhase,
+      phaseNames: _brdPhaseNames,
+      documentLabel: 'BRD',
+      isUpdate: _note.brdDraft != null && _note.brdGenerationPhase == 0,
     );
   }
 
@@ -2414,67 +2339,11 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   }
 
   Widget _buildPrdLoadingBody() {
-    final isUpdate = _prd!.prdDraft != null && _prd!.prdGenerationPhase == 0;
-    final phase = _prd!.prdGenerationPhase;
-    final totalPhases = _prdPhaseNames.length - 1;
-    final hasPhase = !isUpdate && phase != null && phase > 0 && phase < _prdPhaseNames.length;
-    final phaseVal = hasPhase ? phase : 0;
-    final pct = hasPhase ? phaseVal / totalPhases : (isUpdate ? null : 0.0);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 16, height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  value: pct != null && pct > 0 ? pct : null,
-                  color: kPrimary,
-                ),
-              ),
-              const Gap(10),
-              Expanded(
-                child: Text(
-                  hasPhase ? _prdPhaseNames[phaseVal] : (isUpdate ? 'Applying your changes…' : 'Generating PRD…'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: kPrimary),
-                ),
-              ),
-              if (pct != null)
-                Text('${(pct * 100).round()}%',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimary)),
-            ],
-          ),
-        ),
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: pct, minHeight: 5, backgroundColor: kPrimaryLight, color: kPrimary,
-            ),
-          ),
-        ),
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              hasPhase
-                  ? 'Phase $phaseVal of $totalPhases  ·  ${((pct ?? 0) * 100).round()}% complete'
-                  : (isUpdate ? 'Applying your changes. About 30–60 seconds.' : 'Generating PRD in 10 phases…  About 2–3 minutes.'),
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            ),
-          ),
-        ),
-        Container(height: 1, color: const Color(0xFFE8EDF2)),
-      ],
+    return GenerationProgressWidget(
+      phase: _prd!.prdGenerationPhase,
+      phaseNames: _prdPhaseNames,
+      documentLabel: 'PRD',
+      isUpdate: _prd!.prdDraft != null && _prd!.prdGenerationPhase == 0,
     );
   }
 
