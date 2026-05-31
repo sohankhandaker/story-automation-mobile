@@ -2523,62 +2523,143 @@ class _PrdAssignReviewerSheetInline extends ConsumerStatefulWidget {
 
 class _PrdAssignReviewerSheetInlineState
     extends ConsumerState<_PrdAssignReviewerSheetInline> {
-  final _userCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
-  bool _loading = false;
-
-  @override
-  void dispose() {
-    _userCtrl.dispose();
-    _nameCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _assign() async {
-    if (_userCtrl.text.trim().isEmpty) return;
-    setState(() => _loading = true);
-    final updated = await ref
-        .read(prdProvider(widget.noteId).notifier)
-        .assignReviewer(widget.noteId, _userCtrl.text.trim(), _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim());
-    if (updated != null && mounted) {
-      Navigator.pop(context);
-      widget.onAssigned(updated);
-    } else if (mounted) {
-      setState(() => _loading = false);
-    }
-  }
+  ReviewerItem? _selected;
+  bool _submitting = false;
+  String? _error;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final reviewers = ref.read(authProvider).user?.reviewerList ?? [];
+
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.viewInsetsOf(context).bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Assign PRD Reviewer', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
           const Gap(16),
-          TextField(
-            controller: _nameCtrl,
-            decoration: const InputDecoration(labelText: 'Reviewer Name (optional)'),
-          ),
-          const Gap(12),
-          TextField(
-            controller: _userCtrl,
-            decoration: const InputDecoration(labelText: 'GitHub Username *', hintText: 'e.g. johndoe'),
-          ),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF6A1B9A).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.person_add_rounded,
+                  color: Color(0xFF6A1B9A), size: 20),
+            ),
+            const Gap(10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Assign PRD Reviewer',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text('Reviewer will be notified on GitHub to review the PRD',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
+                ],
+              ),
+            ),
+          ]),
           const Gap(20),
+          const Text('Select Reviewer',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          const Gap(8),
+          if (reviewers.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                Gap(8),
+                Expanded(
+                  child: Text(
+                    'No reviewers configured. Go to Settings to add reviewers.',
+                    style: TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
+                ),
+              ]),
+            )
+          else
+            RadioGroup<ReviewerItem>(
+              groupValue: _selected,
+              onChanged: (v) => setState(() => _selected = v),
+              child: Column(
+                children: reviewers
+                    .map((r) => RadioListTile<ReviewerItem>(
+                          value: r,
+                          title: Text(r.name,
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w500)),
+                          subtitle: Text('@${r.githubUsername}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF6B7A8D))),
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: const Color(0xFF6A1B9A),
+                        ))
+                    .toList(),
+              ),
+            ),
+          if (_error != null) ...[
+            const Gap(8),
+            Text(_error!,
+                style: const TextStyle(fontSize: 12, color: Color(0xFFE53935))),
+          ],
+          const Gap(16),
           SizedBox(
-            height: 50,
-            child: FilledButton(
-              onPressed: _loading ? null : _assign,
-              child: _loading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Assign Reviewer', style: TextStyle(fontWeight: FontWeight.w700)),
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF6A1B9A)),
+              onPressed: _submitting || _selected == null
+                  ? null
+                  : () async {
+                      setState(() { _submitting = true; _error = null; });
+                      final navigator = Navigator.of(context);
+                      final updated = await ref
+                          .read(prdProvider(widget.noteId).notifier)
+                          .assignReviewer(
+                            widget.noteId,
+                            _selected!.githubUsername,
+                            _selected!.name,
+                          );
+                      if (!mounted) return;
+                      if (updated != null) {
+                        navigator.pop();
+                        widget.onAssigned(updated);
+                      } else {
+                        setState(() {
+                          _submitting = false;
+                          _error = 'Failed to assign reviewer. Try again.';
+                        });
+                      }
+                    },
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.send_rounded, size: 18),
+              label: Text(_submitting
+                  ? 'Assigning reviewer…'
+                  : 'Assign & Start Review'),
             ),
           ),
         ],
