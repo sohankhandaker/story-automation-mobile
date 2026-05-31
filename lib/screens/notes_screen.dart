@@ -1788,6 +1788,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   // ── Pipeline phase ────────────────────────────────────────────────────────
   String _phase = 'brd'; // 'brd' | 'prd'
   PrdDocument? _prd;
+  bool _prdLoading = false; // true while fetching PRD from backend
   Timer? _prdPollTimer;
   TabController? _prdTabController;
 
@@ -1849,6 +1850,10 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
         if ((wasWorking && !_isWorking) || updated.status == 'Approved') {
           _pollTimer?.cancel();
           ref.read(notesProvider.notifier).fetchNotes();
+          // BRD just became approved — fetch PRD immediately and auto-switch
+          if (updated.status == 'Approved' && _prd == null) {
+            _fetchAndInitPrd();
+          }
         }
       }
     });
@@ -1930,16 +1935,24 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
 
   Future<void> _fetchAndInitPrd() async {
     if (!mounted) return;
+    setState(() => _prdLoading = true);
     try {
       await ref.read(prdProvider(_note.id).notifier).fetchPrd(_note.id);
       if (!mounted) return;
       final prd = ref.read(prdProvider(_note.id)).valueOrNull;
       setState(() {
+        _prdLoading = false;
         _prd = prd;
         if (_prdReady && _prdTabController == null) _initPrdTabs();
+        // Auto-advance to PRD phase whenever PRD exists and has started
+        if (prd != null && prd.status != 'Draft') {
+          _phase = 'prd';
+        }
       });
       if (_prdShouldPoll) _startPrdPolling();
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) setState(() => _prdLoading = false);
+    }
   }
 
   void _startPrdPolling() {
@@ -2260,7 +2273,10 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               onPrdTap: _note.status == 'Approved'
                   ? () {
                       setState(() => _phase = 'prd');
-                      if (_prd == null) _fetchAndInitPrd();
+                      // Re-fetch if prd is null or stale (no draft yet)
+                      if (_prd == null || (_prd!.status == 'Draft' && !_prdLoading)) {
+                        _fetchAndInitPrd();
+                      }
                     }
                   : null,
             ),
@@ -2287,6 +2303,8 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
   // ── PRD phase body ────────────────────────────────────────────────────────
 
   Widget _buildPrdBody() {
+    // Show spinner while loading PRD state from backend
+    if (_prdLoading) return const Center(child: CircularProgressIndicator());
     if (_prd == null || _prd!.status == 'Draft') {
       return _buildPrdGeneratePrompt();
     }
