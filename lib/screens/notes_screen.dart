@@ -90,6 +90,8 @@ class MeetingNote {
   final String? reviewerGithubUsername;
   final String? reviewerName;
   final List<ReviewerStatus> reviewers;
+  final String? githubFileUrl;
+  final String? githubFileRawUrl;
   final DateTime createdAt;
 
   MeetingNote.fromJson(Map<String, dynamic> j)
@@ -108,6 +110,8 @@ class MeetingNote {
         reviewers = (j['reviewers'] as List<dynamic>? ?? [])
             .map((r) => ReviewerStatus.fromJson(r as Map<String, dynamic>))
             .toList(),
+        githubFileUrl = j['github_file_url'] as String?,
+        githubFileRawUrl = j['github_file_raw_url'] as String?,
         createdAt = DateTime.parse(j['created_at'] as String);
 }
 
@@ -2166,6 +2170,13 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               ],
             ),
           if (_note.status == 'Approved') ...[
+            if (_note.githubFileUrl != null)
+              IconButton(
+                icon: const Icon(Icons.cloud_download_rounded, size: 20),
+                tooltip: 'View/Download from GitHub',
+                onPressed: () => launchUrl(Uri.parse(_note.githubFileUrl!),
+                    mode: LaunchMode.externalApplication),
+              ),
             IconButton(
               icon: const Icon(Icons.download_rounded, size: 20),
               tooltip: 'Download BRD as .md',
@@ -2215,6 +2226,13 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               onPressed: _sendToPlanner,
             ),
           if (_prd!.prdDraft != null) ...[
+            if (_prd!.githubFileUrl != null)
+              IconButton(
+                icon: const Icon(Icons.cloud_download_rounded, size: 20),
+                tooltip: 'View/Download from GitHub',
+                onPressed: () => launchUrl(Uri.parse(_prd!.githubFileUrl!),
+                    mode: LaunchMode.externalApplication),
+              ),
             IconButton(
               icon: const Icon(Icons.download_rounded, size: 20),
               tooltip: 'Download PRD as .md',

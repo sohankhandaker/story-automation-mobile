@@ -68,6 +68,8 @@ class PrdDocument {
   final String? reviewerGithubUsername;
   final String? reviewerName;
   final List<PrdReviewerStatus> reviewers;
+  final String? githubFileUrl;
+  final String? githubFileRawUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -86,6 +88,8 @@ class PrdDocument {
             .map((r) =>
                 PrdReviewerStatus.fromJson(r as Map<String, dynamic>))
             .toList(),
+        githubFileUrl = j['github_file_url'] as String?,
+        githubFileRawUrl = j['github_file_raw_url'] as String?,
         createdAt = DateTime.parse(j['created_at'] as String),
         updatedAt = DateTime.parse(j['updated_at'] as String);
 }
