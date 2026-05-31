@@ -1779,7 +1779,7 @@ class _NoteDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late MeetingNote _note;
   Timer? _pollTimer;
   TabController? _tabController;
