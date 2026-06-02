@@ -716,10 +716,8 @@ class ProjectDetailScreen extends ConsumerWidget {
               ),
             ),
             data: (notes) => notes.isEmpty
-                ? SliverFillRemaining(
-                    child: _NotesEmptyState(
-                      onAdd: () => _showAddNoteSheet(context, ref),
-                    ),
+                ? const SliverFillRemaining(
+                    child: _NotesEmptyState(),
                   )
                 : SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -1084,8 +1082,7 @@ class _ProjectsEmptyState extends StatelessWidget {
 }
 
 class _NotesEmptyState extends StatelessWidget {
-  final VoidCallback onAdd;
-  const _NotesEmptyState({required this.onAdd});
+  const _NotesEmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -1105,15 +1102,9 @@ class _NotesEmptyState extends StatelessWidget {
             const Text('No notes yet',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF0D1B2A))),
             const Gap(8),
-            const Text('Add meeting notes to start generating\na BRD for this project.',
+            const Text('Tap + Add Notes to start generating\na BRD for this project.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Color(0xFF6B7A8D), fontSize: 13, height: 1.5)),
-            const Gap(20),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Add Notes'),
-            ),
           ],
         ),
       ),
