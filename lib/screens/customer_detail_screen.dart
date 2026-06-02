@@ -106,7 +106,11 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
       body: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
-              child: _CustomerInfoCard(customer: widget.customer)),
+              child: _CustomerInfoCard(
+                customer: widget.customer,
+                liveProjectCount:
+                    projectsAsync.valueOrNull?.length,
+              )),
           const SliverToBoxAdapter(child: Gap(4)),
           SliverToBoxAdapter(
             child: Padding(
@@ -244,7 +248,8 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
 
 class _CustomerInfoCard extends StatelessWidget {
   final Customer customer;
-  const _CustomerInfoCard({required this.customer});
+  final int? liveProjectCount;
+  const _CustomerInfoCard({required this.customer, this.liveProjectCount});
 
   @override
   Widget build(BuildContext context) {
@@ -339,7 +344,7 @@ class _CustomerInfoCard extends StatelessWidget {
                     size: 13, color: Colors.white70),
                 const Gap(6),
                 Text(
-                  '${customer.projectsCount} project${customer.projectsCount == 1 ? '' : 's'}',
+                  '${liveProjectCount ?? customer.projectsCount} project${(liveProjectCount ?? customer.projectsCount) == 1 ? '' : 's'}',
                   style: const TextStyle(
                       fontSize: 12,
                       color: Colors.white70,

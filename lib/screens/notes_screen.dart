@@ -1977,7 +1977,7 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
   }
 
   Future<void> _fetchAndInitPrd() async {
-    if (!mounted) return;
+    if (!mounted || _prdLoading) return; // guard against concurrent calls
     setState(() => _prdLoading = true);
     try {
       await ref.read(prdProvider(_note.id).notifier).fetchPrd(_note.id);

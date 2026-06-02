@@ -59,7 +59,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Container(height: 1, color: SeraTokens.divider),
           NavigationBar(
             selectedIndex: _selectedIndex,
-            onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+            onDestinationSelected: (i) {
+              setState(() => _selectedIndex = i);
+              // Refresh all data when switching back to Dashboard
+              if (i == 0) {
+                ref.read(projectsProvider.notifier).fetch();
+                ref.read(notesProvider.notifier).fetchNotes();
+                ref.read(customersProvider.notifier).fetch();
+              }
+            },
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.dashboard_outlined),

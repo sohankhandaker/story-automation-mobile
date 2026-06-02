@@ -444,6 +444,8 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
     Navigator.pop(context);
 
     if (project != null) {
+      // Refresh customers so projects_count badge stays accurate
+      ref.read(customersProvider.notifier).fetch();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Project "${project.title}" created')),
       );
