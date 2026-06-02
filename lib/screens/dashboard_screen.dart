@@ -521,7 +521,7 @@ class _EmptyDashboard extends StatelessWidget {
               size: 38, color: SeraTokens.primary),
         ),
         const Gap(18),
-        const Text('Welcome to Story Automation',
+        const Text('Welcome to SELISE Elicitation & Requirement Agent',
             style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
