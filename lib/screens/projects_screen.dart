@@ -513,57 +513,59 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
                 ),
                 const Gap(20),
 
-                // Customer selector
-                GestureDetector(
-                  onTap: _pickCustomer,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: SeraTokens.surface,
-                      borderRadius: BorderRadius.circular(SeraTokens.rLg),
-                      border: Border.all(
-                        color: _selectedCustomer != null
-                            ? SeraTokens.primary.withValues(alpha: 0.6)
-                            : SeraTokens.borderStrong,
-                        width: _selectedCustomer != null ? 1.8 : 1,
+                // Customer selector — hidden when opened from CustomerDetailScreen
+                if (widget.preselectedCustomer == null) ...[
+                  GestureDetector(
+                    onTap: _pickCustomer,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: SeraTokens.surface,
+                        borderRadius: BorderRadius.circular(SeraTokens.rLg),
+                        border: Border.all(
+                          color: _selectedCustomer != null
+                              ? SeraTokens.primary.withValues(alpha: 0.6)
+                              : SeraTokens.borderStrong,
+                          width: _selectedCustomer != null ? 1.8 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.business_rounded, size: 20,
+                              color: _selectedCustomer != null ? SeraTokens.primary : SeraTokens.fg3),
+                          const Gap(12),
+                          Expanded(
+                            child: _selectedCustomer == null
+                                ? const Text('Select Customer *',
+                                    style: TextStyle(fontSize: 14, color: SeraTokens.fg3))
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_selectedCustomer!.name,
+                                          style: const TextStyle(
+                                              fontSize: 14, fontWeight: FontWeight.w600,
+                                              color: SeraTokens.fg1)),
+                                      if (_selectedCustomer!.url != null)
+                                        Text(_selectedCustomer!.url!,
+                                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 11.5, color: SeraTokens.primary)),
+                                    ],
+                                  ),
+                          ),
+                          Icon(Icons.expand_more_rounded, size: 20,
+                              color: _selectedCustomer != null ? SeraTokens.primary : SeraTokens.hint),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.business_rounded, size: 20,
-                            color: _selectedCustomer != null ? SeraTokens.primary : SeraTokens.fg3),
-                        const Gap(12),
-                        Expanded(
-                          child: _selectedCustomer == null
-                              ? const Text('Select Customer *',
-                                  style: TextStyle(fontSize: 14, color: SeraTokens.fg3))
-                              : Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(_selectedCustomer!.name,
-                                        style: const TextStyle(
-                                            fontSize: 14, fontWeight: FontWeight.w600,
-                                            color: SeraTokens.fg1)),
-                                    if (_selectedCustomer!.url != null)
-                                      Text(_selectedCustomer!.url!,
-                                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 11.5, color: SeraTokens.primary)),
-                                  ],
-                                ),
-                        ),
-                        Icon(Icons.expand_more_rounded, size: 20,
-                            color: _selectedCustomer != null ? SeraTokens.primary : SeraTokens.hint),
-                      ],
+                  ),
+                  if (_selectedCustomer == null)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4, left: 4),
+                      child: Text('A customer is required',
+                          style: TextStyle(fontSize: 11, color: SeraTokens.fg3)),
                     ),
-                  ),
-                ),
-                if (_selectedCustomer == null)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4, left: 4),
-                    child: Text('A customer is required',
-                        style: TextStyle(fontSize: 11, color: SeraTokens.fg3)),
-                  ),
-                const Gap(14),
+                  const Gap(14),
+                ],
 
                 // Project title
                 TextFormField(
@@ -606,7 +608,7 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
                 SizedBox(
                   height: 50,
                   child: FilledButton(
-                    onPressed: (_loading || _selectedCustomer == null) ? null : _submit,
+                    onPressed: (_loading || (widget.preselectedCustomer == null && _selectedCustomer == null)) ? null : _submit,
                     child: _loading
                         ? const SizedBox(width: 20, height: 20,
                             child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
