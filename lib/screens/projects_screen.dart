@@ -1252,6 +1252,13 @@ class _ProjectNoteSheetState extends ConsumerState<_ProjectNoteSheet> {
                   textStyle: const TextStyle(fontSize: 13)),
             ),
           ]),
+          const Padding(
+            padding: EdgeInsets.only(top: 4, left: 2),
+            child: Text(
+              'Files: PDF, DOCX, DOC, TXT, MD',
+              style: TextStyle(fontSize: 11, color: SeraTokens.hint),
+            ),
+          ),
           if (_attachments.isNotEmpty) ...[
             const Gap(8),
             Wrap(
