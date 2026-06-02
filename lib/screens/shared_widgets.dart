@@ -1,13 +1,14 @@
+// lib/screens/shared_widgets.dart — refactored to use SeraTokens.
+// The animated AI-agent→document generation view + multi-URL wiki input.
+// Animation timing/curves are unchanged from your original.
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import '../app.dart';
+import '../theme/sera_tokens.dart';
 
 // ── Generation progress (AI agent → document animated view) ──────────────────
 
-/// Drop-in replacement for the simple progress bar.
-/// Shows the animated AI-agent→document flow, typewriter phase name,
-/// progress bar, and a step-completion list — matching the old task tab style.
 class GenerationProgressWidget extends StatefulWidget {
   final int? phase;
   final List<String> phaseNames; // index 0 = '', indices 1..n = phase names
@@ -52,7 +53,6 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
   @override
   void initState() {
     super.initState();
-
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1400))
       ..repeat(reverse: true);
@@ -111,7 +111,7 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
   @override
   Widget build(BuildContext context) {
     final totalPhases = widget.phaseNames.length - 1;
-    final p = widget.phase; // local copy enables type narrowing
+    final p = widget.phase;
     final hasPhase =
         !widget.isUpdate && p != null && p > 0 && p < widget.phaseNames.length;
     final int phaseVal = hasPhase ? p : 0;
@@ -128,8 +128,8 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
             Container(
               width: 6,
               height: 6,
-              decoration:
-                  const BoxDecoration(color: kPrimary, shape: BoxShape.circle),
+              decoration: const BoxDecoration(
+                  color: SeraTokens.primary, shape: BoxShape.circle),
             ),
             const Gap(6),
             Text(
@@ -137,7 +137,7 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: kPrimary,
+                color: SeraTokens.primary,
                 letterSpacing: .4,
               ),
             ),
@@ -148,10 +148,10 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(SeraTokens.r2xl),
               boxShadow: [
                 BoxShadow(
-                  color: kPrimary.withValues(alpha: 0.10),
+                  color: SeraTokens.primary.withValues(alpha: 0.10),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
@@ -159,7 +159,6 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
             ),
             child: Column(
               children: [
-                // Flow visualiser row
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                   child: Row(
@@ -174,14 +173,14 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                             height: 52,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [kPrimary, Color(0xFF0A5FC4)],
+                                colors: [SeraTokens.primary, SeraTokens.primaryDeep],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: kPrimary.withValues(alpha: 0.35),
+                                  color: SeraTokens.primary.withValues(alpha: 0.35),
                                   blurRadius: 14,
                                   spreadRadius: 2,
                                 ),
@@ -192,7 +191,6 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                           ),
                         ),
                       ),
-
                       // Flowing dots
                       Expanded(
                         child: AnimatedBuilder(
@@ -203,7 +201,6 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                           ),
                         ),
                       ),
-
                       // Shimmer document icon
                       AnimatedBuilder(
                         animation: _shimmer,
@@ -211,10 +208,10 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                           width: 52,
                           height: 52,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF0F7FF),
+                            color: SeraTokens.surfaceBlue,
                             borderRadius: BorderRadius.circular(13),
                             border: Border.all(
-                                color: kPrimary.withValues(alpha: 0.25)),
+                                color: SeraTokens.primary.withValues(alpha: 0.25)),
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
@@ -222,14 +219,12 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                               children: [
                                 Positioned.fill(
                                   child: ShaderMask(
-                                    shaderCallback: (bounds) =>
-                                        LinearGradient(
-                                      begin:
-                                          Alignment(_shimmer.value - 1, 0),
+                                    shaderCallback: (bounds) => LinearGradient(
+                                      begin: Alignment(_shimmer.value - 1, 0),
                                       end: Alignment(_shimmer.value, 0),
                                       colors: [
                                         Colors.transparent,
-                                        kPrimary.withValues(alpha: 0.15),
+                                        SeraTokens.primary.withValues(alpha: 0.15),
                                         Colors.transparent,
                                       ],
                                     ).createShader(bounds),
@@ -238,7 +233,7 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                                 ),
                                 const Center(
                                   child: Icon(Icons.description_rounded,
-                                      color: kPrimary, size: 26),
+                                      color: SeraTokens.primary, size: 26),
                                 ),
                               ],
                             ),
@@ -248,7 +243,6 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                     ],
                   ),
                 ),
-
                 // Typewriter phase name + blinking cursor
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
@@ -260,7 +254,7 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF1A2B3C),
+                            color: SeraTokens.fg1Alt,
                             height: 1.3,
                           ),
                         ),
@@ -273,7 +267,7 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                             width: 2,
                             height: 16,
                             decoration: BoxDecoration(
-                              color: kPrimary,
+                              color: SeraTokens.primary,
                               borderRadius: BorderRadius.circular(1),
                             ),
                           ),
@@ -282,7 +276,6 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                     ],
                   ),
                 ),
-
                 // Progress bar + label
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -294,9 +287,9 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                         child: LinearProgressIndicator(
                           value: progress,
                           minHeight: 5,
-                          backgroundColor: kPrimaryLight,
-                          valueColor:
-                              const AlwaysStoppedAnimation<Color>(kPrimary),
+                          backgroundColor: SeraTokens.primaryLight,
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                              SeraTokens.primary),
                         ),
                       ),
                       const Gap(6),
@@ -319,12 +312,12 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
           // ── Step completion list ────────────────────────────────────────
           if (!widget.isUpdate && totalPhases > 0) ...[
             const Gap(22),
-            const Text(
+            Text(
               'STEPS',
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF8896A5),
+                color: SeraTokens.muted,
                 letterSpacing: 1.0,
               ),
             ),
@@ -337,10 +330,7 @@ class _GenerationProgressWidgetState extends State<GenerationProgressWidget>
                   ? widget.phaseNames[stepNum]
                   : 'Step $stepNum';
               return _StepRow(
-                name: name,
-                isCompleted: isCompleted,
-                isCurrent: isCurrent,
-              );
+                  name: name, isCompleted: isCompleted, isCurrent: isCurrent);
             }),
           ],
         ],
@@ -359,17 +349,15 @@ class _FlowDotsPainter extends CustomPainter {
     const dotRadius = 3.5;
     final cy = size.height / 2;
 
-    // Subtle connector line
     canvas.drawLine(
       Offset(0, cy),
       Offset(size.width, cy),
       Paint()
-        ..color = kPrimary.withValues(alpha: 0.12)
+        ..color = SeraTokens.primary.withValues(alpha: 0.12)
         ..strokeWidth = 1.5
         ..style = PaintingStyle.stroke,
     );
 
-    // Moving dots
     for (int i = 0; i < dotCount; i++) {
       final t = ((progress + i / dotCount) % 1.0);
       final x = size.width * t;
@@ -379,7 +367,7 @@ class _FlowDotsPainter extends CustomPainter {
         Offset(x, cy),
         dotRadius * scale,
         Paint()
-          ..color = kPrimary.withValues(alpha: opacity * 0.85)
+          ..color = SeraTokens.primary.withValues(alpha: opacity * 0.85)
           ..style = PaintingStyle.fill,
       );
     }
@@ -412,16 +400,16 @@ class _StepRow extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isCompleted
-                  ? const Color(0xFF43A047)
+                  ? SeraTokens.statusApproved
                   : isCurrent
-                      ? kPrimary
+                      ? SeraTokens.primary
                       : Colors.transparent,
               border: Border.all(
                 color: isCompleted
-                    ? const Color(0xFF43A047)
+                    ? SeraTokens.statusApproved
                     : isCurrent
-                        ? kPrimary
-                        : const Color(0xFFCBD5E1),
+                        ? SeraTokens.primary
+                        : SeraTokens.disabled,
                 width: 2,
               ),
             ),
@@ -435,13 +423,12 @@ class _StepRow extends StatelessWidget {
               name,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight:
-                    isCurrent ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
                 color: isCompleted
-                    ? const Color(0xFF43A047)
+                    ? SeraTokens.statusApproved
                     : isCurrent
-                        ? kPrimary
-                        : const Color(0xFF8896A5),
+                        ? SeraTokens.primary
+                        : SeraTokens.muted,
               ),
             ),
           ),
@@ -450,7 +437,7 @@ class _StepRow extends StatelessWidget {
               width: 14,
               height: 14,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: kPrimary),
+                  strokeWidth: 2, color: SeraTokens.primary),
             ),
         ],
       ),
@@ -460,8 +447,6 @@ class _StepRow extends StatelessWidget {
 
 // ── WikiUrlInput ──────────────────────────────────────────────────────────────
 
-/// Multi-URL chip input — type/paste a URL, press + or Enter, it becomes
-/// a removable chip. Stores all URLs as a newline-separated string.
 class WikiUrlInput extends StatelessWidget {
   final TextEditingController controller;
   final List<String> urls;
@@ -513,13 +498,10 @@ class WikiUrlInput extends StatelessWidget {
             spacing: 6,
             runSpacing: 4,
             children: urls.map((url) {
-              final label =
-                  url.length > 40 ? '${url.substring(0, 40)}…' : url;
+              final label = url.length > 40 ? '${url.substring(0, 40)}…' : url;
               return Chip(
-                avatar: Icon(Icons.link_rounded,
-                    size: 14, color: cs.primary),
-                label:
-                    Text(label, style: const TextStyle(fontSize: 11)),
+                avatar: Icon(Icons.link_rounded, size: 14, color: cs.primary),
+                label: Text(label, style: const TextStyle(fontSize: 11)),
                 deleteIcon: const Icon(Icons.close, size: 14),
                 onDeleted: () => onRemove(url),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

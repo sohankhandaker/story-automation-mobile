@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../app.dart';
+
 import '../core/api.dart';
+import '../theme/sera_tokens.dart';
 import 'notes_screen.dart' show MeetingNote, NoteCard;
 import 'customers_screen.dart' show Customer, customersProvider, CustomerFormSheet;
 
@@ -193,7 +195,7 @@ class _ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(SeraTokens.r2xl),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -203,8 +205,8 @@ class _ProjectCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE8EDF5)),
+          borderRadius: BorderRadius.circular(SeraTokens.r2xl),
+          border: Border.all(color: SeraTokens.border),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -221,7 +223,7 @@ class _ProjectCard extends StatelessWidget {
               height: 5,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [kPrimary, Color(0xFF0A3468)],
+                  colors: [SeraTokens.primary, Color(0xFF0A3468)],
                 ),
                 borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(16)),
@@ -239,11 +241,11 @@ class _ProjectCard extends StatelessWidget {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: kPrimaryLight,
-                          borderRadius: BorderRadius.circular(11),
+                          color: SeraTokens.primaryLight,
+                          borderRadius: BorderRadius.circular(SeraTokens.rMd),
                         ),
                         child: const Icon(Icons.folder_rounded,
-                            color: kPrimary, size: 22),
+                            color: SeraTokens.primary, size: 22),
                       ),
                       const Gap(12),
                       Expanded(
@@ -257,7 +259,7 @@ class _ProjectCard extends StatelessWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
-                                color: Color(0xFF0D1B2A),
+                                color: SeraTokens.fg1,
                                 height: 1.25,
                               ),
                             ),
@@ -265,7 +267,7 @@ class _ProjectCard extends StatelessWidget {
                             Row(
                               children: [
                                 const Icon(Icons.business_rounded,
-                                    size: 13, color: Color(0xFF6B7A8D)),
+                                    size: 13, color: SeraTokens.fg3),
                                 const Gap(5),
                                 Expanded(
                                   child: Text(
@@ -274,7 +276,7 @@ class _ProjectCard extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontSize: 12.5,
-                                      color: Color(0xFF6B7A8D),
+                                      color: SeraTokens.fg3,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -285,7 +287,7 @@ class _ProjectCard extends StatelessWidget {
                         ),
                       ),
                       const Icon(Icons.chevron_right_rounded,
-                          color: Color(0xFFCBD5E1), size: 20),
+                          color: SeraTokens.disabled, size: 20),
                     ],
                   ),
                   if (project.shortDescription != null &&
@@ -297,7 +299,7 @@ class _ProjectCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12.5,
-                        color: Color(0xFF8896A5),
+                        color: SeraTokens.muted,
                         height: 1.45,
                       ),
                     ),
@@ -308,7 +310,7 @@ class _ProjectCard extends StatelessWidget {
                       _MetaChip(
                         icon: Icons.description_outlined,
                         label: '${project.notesCount} note${project.notesCount == 1 ? '' : 's'}',
-                        color: kPrimary,
+                        color: SeraTokens.primary,
                       ),
                       if (project.githubIssueUrl != null) ...[
                         const Gap(8),
@@ -323,7 +325,7 @@ class _ProjectCard extends StatelessWidget {
                         _formatDate(project.createdAt),
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFFAFBDCC),
+                          color: SeraTokens.hint,
                         ),
                       ),
                     ],
@@ -359,7 +361,7 @@ class _MetaChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SeraTokens.rPill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -456,7 +458,7 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SeraTokens.rPill),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
@@ -482,14 +484,14 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
                     Container(
                       padding: const EdgeInsets.all(9),
                       decoration: BoxDecoration(
-                        color: kPrimaryLight,
-                        borderRadius: BorderRadius.circular(11),
+                        color: SeraTokens.primaryLight,
+                        borderRadius: BorderRadius.circular(SeraTokens.rMd),
                       ),
-                      child: const Icon(Icons.folder_open_rounded, color: kPrimary, size: 20),
+                      child: const Icon(Icons.folder_open_rounded, color: SeraTokens.primary, size: 20),
                     ),
                     const Gap(12),
                     const Text('New Project',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF0D1B2A))),
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: SeraTokens.fg1)),
                   ],
                 ),
                 const Gap(20),
@@ -500,40 +502,40 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: kSurface,
-                      borderRadius: BorderRadius.circular(12),
+                      color: SeraTokens.surface,
+                      borderRadius: BorderRadius.circular(SeraTokens.rLg),
                       border: Border.all(
                         color: _selectedCustomer != null
-                            ? kPrimary.withValues(alpha: 0.6)
-                            : const Color(0xFFD8E4F0),
+                            ? SeraTokens.primary.withValues(alpha: 0.6)
+                            : SeraTokens.borderStrong,
                         width: _selectedCustomer != null ? 1.8 : 1,
                       ),
                     ),
                     child: Row(
                       children: [
                         Icon(Icons.business_rounded, size: 20,
-                            color: _selectedCustomer != null ? kPrimary : const Color(0xFF6B7A8D)),
+                            color: _selectedCustomer != null ? SeraTokens.primary : SeraTokens.fg3),
                         const Gap(12),
                         Expanded(
                           child: _selectedCustomer == null
                               ? const Text('Select Customer *',
-                                  style: TextStyle(fontSize: 14, color: Color(0xFF6B7A8D)))
+                                  style: TextStyle(fontSize: 14, color: SeraTokens.fg3))
                               : Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(_selectedCustomer!.name,
                                         style: const TextStyle(
                                             fontSize: 14, fontWeight: FontWeight.w600,
-                                            color: Color(0xFF0D1B2A))),
+                                            color: SeraTokens.fg1)),
                                     if (_selectedCustomer!.url != null)
                                       Text(_selectedCustomer!.url!,
                                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 11.5, color: kPrimary)),
+                                          style: const TextStyle(fontSize: 11.5, color: SeraTokens.primary)),
                                   ],
                                 ),
                         ),
                         Icon(Icons.expand_more_rounded, size: 20,
-                            color: _selectedCustomer != null ? kPrimary : const Color(0xFFAFBDCC)),
+                            color: _selectedCustomer != null ? SeraTokens.primary : SeraTokens.hint),
                       ],
                     ),
                   ),
@@ -542,7 +544,7 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
                   const Padding(
                     padding: EdgeInsets.only(top: 4, left: 4),
                     child: Text('A customer is required',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF6B7A8D))),
+                        style: TextStyle(fontSize: 11, color: SeraTokens.fg3)),
                   ),
                 const Gap(14),
 
@@ -614,7 +616,7 @@ class ProjectDetailScreen extends ConsumerWidget {
     final notesAsync = ref.watch(projectNotesProvider(project.id));
 
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: SeraTokens.surface,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -628,7 +630,7 @@ class ProjectDetailScreen extends ConsumerWidget {
               project.clientName,
               style: const TextStyle(
                   fontSize: 11.5,
-                  color: Color(0xFF6B7A8D),
+                  color: SeraTokens.fg3,
                   fontWeight: FontWeight.w500),
             ),
           ],
@@ -651,7 +653,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddNoteSheet(context, ref),
-        backgroundColor: kPrimary,
+        backgroundColor: SeraTokens.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Add Notes',
@@ -667,21 +669,21 @@ class ProjectDetailScreen extends ConsumerWidget {
               child: Row(
                 children: [
                   const Icon(Icons.description_rounded,
-                      size: 15, color: Color(0xFF6B7A8D)),
+                      size: 15, color: SeraTokens.fg3),
                   const Gap(7),
                   const Text(
                     'Meeting Notes & BRDs',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
-                      color: Color(0xFF0D1B2A),
+                      color: SeraTokens.fg1,
                     ),
                   ),
                   const Spacer(),
                   notesAsync.when(
                     data: (notes) => Text('${notes.length}',
                         style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF8896A5))),
+                            fontSize: 12, color: SeraTokens.muted)),
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                   ),
@@ -760,10 +762,10 @@ class _ProjectInfoCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [Color(0xFF04111F), Color(0xFF0A3468)],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SeraTokens.r2xl),
         boxShadow: [
           BoxShadow(
-            color: kPrimary.withValues(alpha: 0.20),
+            color: SeraTokens.primary.withValues(alpha: 0.20),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -778,7 +780,7 @@ class _ProjectInfoCard extends StatelessWidget {
                 padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(SeraTokens.rMd),
                 ),
                 child: const Icon(Icons.folder_rounded,
                     color: Colors.white, size: 18),
@@ -863,7 +865,7 @@ class _ProjectInfoCard extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(SeraTokens.rSm),
                 border: Border.all(
                     color: Colors.white.withValues(alpha: 0.15)),
               ),
@@ -945,7 +947,7 @@ class _ProjectNoteSheetState extends State<_ProjectNoteSheet> {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SeraTokens.rPill),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
@@ -969,11 +971,11 @@ class _ProjectNoteSheetState extends State<_ProjectNoteSheet> {
                 Container(
                   padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
-                    color: kPrimaryLight,
-                    borderRadius: BorderRadius.circular(11),
+                    color: SeraTokens.primaryLight,
+                    borderRadius: BorderRadius.circular(SeraTokens.rMd),
                   ),
                   child: const Icon(Icons.note_add_rounded,
-                      color: kPrimary, size: 20),
+                      color: SeraTokens.primary, size: 20),
                 ),
                 const Gap(12),
                 const Text(
@@ -981,24 +983,44 @@ class _ProjectNoteSheetState extends State<_ProjectNoteSheet> {
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0D1B2A),
+                    color: SeraTokens.fg1,
                   ),
                 ),
               ],
             ),
             const Gap(20),
-            TextFormField(
-              controller: _notesCtrl,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Meeting Notes',
-                hintText:
-                    'Paste or type your meeting notes, requirements, decisions…',
-                alignLabelWithHint: true,
+            Stack(children: [
+              TextFormField(
+                controller: _notesCtrl,
+                maxLines: 5,
+                textCapitalization: TextCapitalization.sentences,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Meeting Notes',
+                  hintText:
+                      'Paste or type your meeting notes, requirements, decisions…',
+                  alignLabelWithHint: true,
+                  contentPadding: EdgeInsets.fromLTRB(14, 14, 50, 14),
+                ),
               ),
-            ),
+              Positioned(
+                right: 4,
+                top: 4,
+                child: IconButton(
+                  tooltip: 'Paste from clipboard',
+                  icon: const Icon(Icons.content_paste_rounded, size: 20),
+                  onPressed: () async {
+                    final data =
+                        await Clipboard.getData(Clipboard.kTextPlain);
+                    if (data?.text != null) {
+                      _notesCtrl.text = data!.text!.trim();
+                      _notesCtrl.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _notesCtrl.text.length));
+                    }
+                  },
+                ),
+              ),
+            ]),
             const Gap(14),
             TextFormField(
               controller: _wikiCtrl,
@@ -1049,11 +1071,11 @@ class _ProjectsEmptyState extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: kPrimaryLight,
+                color: SeraTokens.primaryLight,
                 borderRadius: BorderRadius.circular(24),
               ),
               child: const Icon(Icons.folder_open_rounded,
-                  size: 40, color: kPrimary),
+                  size: 40, color: SeraTokens.primary),
             ),
             const Gap(20),
             const Text(
@@ -1061,7 +1083,7 @@ class _ProjectsEmptyState extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 17,
-                color: Color(0xFF0D1B2A),
+                color: SeraTokens.fg1,
               ),
             ),
             const Gap(8),
@@ -1069,7 +1091,7 @@ class _ProjectsEmptyState extends StatelessWidget {
               'Tap + New Project to get started.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7A8D),
+                color: SeraTokens.fg3,
                 fontSize: 13.5,
                 height: 1.5,
               ),
@@ -1095,16 +1117,16 @@ class _NotesEmptyState extends StatelessWidget {
             Container(
               width: 72, height: 72,
               decoration: BoxDecoration(
-                color: kPrimaryLight, borderRadius: BorderRadius.circular(20)),
-              child: const Icon(Icons.note_alt_outlined, size: 36, color: kPrimary),
+                color: SeraTokens.primaryLight, borderRadius: BorderRadius.circular(SeraTokens.rPill)),
+              child: const Icon(Icons.note_alt_outlined, size: 36, color: SeraTokens.primary),
             ),
             const Gap(18),
             const Text('No notes yet',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF0D1B2A))),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: SeraTokens.fg1)),
             const Gap(8),
             const Text('Tap + Add Notes to start generating\na BRD for this project.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFF6B7A8D), fontSize: 13, height: 1.5)),
+                style: TextStyle(color: SeraTokens.fg3, fontSize: 13, height: 1.5)),
           ],
         ),
       ),
@@ -1131,7 +1153,7 @@ class _CustomerPickerSheet extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SeraTokens.rPill),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1152,7 +1174,7 @@ class _CustomerPickerSheet extends StatelessWidget {
             child: Row(
               children: [
                 const Text('Select Customer',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF0D1B2A))),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: SeraTokens.fg1)),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: () {
@@ -1176,11 +1198,11 @@ class _CustomerPickerSheet extends StatelessWidget {
               padding: const EdgeInsets.all(32),
               child: Column(
                 children: [
-                  const Icon(Icons.business_rounded, size: 40, color: Color(0xFFCBD5E1)),
+                  const Icon(Icons.business_rounded, size: 40, color: SeraTokens.disabled),
                   const Gap(12),
                   const Text('No customers yet.\nCreate one first.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Color(0xFF8896A5), fontSize: 13)),
+                      style: TextStyle(color: SeraTokens.muted, fontSize: 13)),
                 ],
               ),
             )
@@ -1197,25 +1219,25 @@ class _CustomerPickerSheet extends StatelessWidget {
                     leading: Container(
                       width: 38, height: 38,
                       decoration: BoxDecoration(
-                        color: isSelected ? kPrimaryLight : const Color(0xFFEEF2FF),
-                        borderRadius: BorderRadius.circular(10),
+                        color: isSelected ? SeraTokens.primaryLight : const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(SeraTokens.rMd),
                       ),
                       child: Icon(Icons.business_rounded,
                           size: 18,
-                          color: isSelected ? kPrimary : const Color(0xFF4F46E5)),
+                          color: isSelected ? SeraTokens.primary : const Color(0xFF4F46E5)),
                     ),
                     title: Text(c.name,
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
-                          color: isSelected ? kPrimary : const Color(0xFF0D1B2A),
+                          color: isSelected ? SeraTokens.primary : SeraTokens.fg1,
                         )),
                     subtitle: c.url != null
                         ? Text(c.url!, maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 11.5))
                         : null,
                     trailing: isSelected
-                        ? const Icon(Icons.check_circle_rounded, color: kPrimary, size: 20)
+                        ? const Icon(Icons.check_circle_rounded, color: SeraTokens.primary, size: 20)
                         : null,
                     onTap: () => Navigator.pop(context, c),
                   );

@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app.dart';
+import '../theme/sera_tokens.dart';
 import '../core/api.dart';
 import '../models/user.dart';
 import 'shared_widgets.dart';
@@ -52,12 +53,12 @@ const _brdPhaseNames = [
 ];
 
 const _statusColors = {
-  'Draft': Color(0xFF78909C),
-  'In Progress': Color(0xFF1565C0),
-  'Pending Review': Color(0xFF6A1B9A),
-  'In Review': Color(0xFF1E88E5),
-  'Changes Requested': Color(0xFFE53935),
-  'Approved': Color(0xFF43A047),
+  'Draft': SeraTokens.statusDraft,
+  'In Progress': SeraTokens.statusInProgress,
+  'Pending Review': SeraTokens.statusPendingReview,
+  'In Review': SeraTokens.statusInReview,
+  'Changes Requested': SeraTokens.statusChanges,
+  'Approved': SeraTokens.statusApproved,
 };
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -374,7 +375,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _statusColors[status] ?? const Color(0xFF78909C);
+    final color = _statusColors[status] ?? SeraTokens.statusDraft;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -436,7 +437,7 @@ class NotesTab extends ConsumerWidget {
                 const Gap(6),
                 const Text('Tap + New Meeting Note to get started',
                     style: TextStyle(
-                        color: Color(0xFF6B7A8D), fontSize: 14)),
+                        color: SeraTokens.fg3, fontSize: 14)),
               ],
             ),
           );
@@ -482,7 +483,7 @@ class NoteCard extends ConsumerWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: isDone
-                      ? const Color(0xFF43A047).withValues(alpha: 0.12)
+                      ? SeraTokens.statusApproved.withValues(alpha: 0.12)
                       : kPrimaryLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -492,7 +493,7 @@ class NoteCard extends ConsumerWidget {
                       : isWorking
                           ? Icons.hourglass_top_rounded
                           : Icons.note_alt_outlined,
-                  color: isDone ? const Color(0xFF43A047) : kPrimary,
+                  color: isDone ? SeraTokens.statusApproved : kPrimary,
                   size: 22,
                 ),
               ),
@@ -524,7 +525,7 @@ class NoteCard extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 12,
                             color: isDone
-                                ? const Color(0xFF43A047)
+                                ? SeraTokens.statusApproved
                                 : cs.onSurfaceVariant,
                           ),
                         ),
@@ -864,7 +865,7 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
                 child: Text(
                   _partialText.isNotEmpty ? _partialText : _sttStatus,
                   style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF6B7A8D)),
+                      fontSize: 12, color: SeraTokens.fg3),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1142,7 +1143,7 @@ class _AddMoreNotesSheetState
                   Text(
                       'AI will incorporate this context into the BRD',
                       style: TextStyle(
-                          fontSize: 12, color: Color(0xFF6B7A8D))),
+                          fontSize: 12, color: SeraTokens.fg3)),
                 ],
               ),
             ),
@@ -1204,7 +1205,7 @@ class _AddMoreNotesSheetState
                 child: Text(
                   _partialText.isNotEmpty ? _partialText : 'Listening…',
                   style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF6B7A8D)),
+                      fontSize: 12, color: SeraTokens.fg3),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1355,10 +1356,10 @@ class _MarkReadySheetState extends ConsumerState<_MarkReadySheet> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: const Color(0xFF1565C0).withValues(alpha: 0.1),
+                  color: SeraTokens.statusInProgress.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.rocket_launch_rounded,
-                  color: Color(0xFF1565C0), size: 20),
+                  color: SeraTokens.statusInProgress, size: 20),
             ),
             const Gap(10),
             const Expanded(
@@ -1370,7 +1371,7 @@ class _MarkReadySheetState extends ConsumerState<_MarkReadySheet> {
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
                   Text('Creates a GitHub ticket and generates the full BRD',
                       style:
-                          TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
+                          TextStyle(fontSize: 12, color: SeraTokens.fg3)),
                 ],
               ),
             ),
@@ -1410,14 +1411,14 @@ class _MarkReadySheetState extends ConsumerState<_MarkReadySheet> {
             const Gap(12),
             Text(_error!,
                 style: const TextStyle(
-                    fontSize: 12, color: Color(0xFFE53935))),
+                    fontSize: 12, color: SeraTokens.statusChanges)),
           ],
           const Gap(16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF1565C0)),
+                  backgroundColor: SeraTokens.statusInProgress),
               onPressed: _submitting
                   ? null
                   : () async {
@@ -1509,10 +1510,10 @@ class _AssignReviewerSheetState
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: const Color(0xFF6A1B9A).withValues(alpha: 0.1),
+                  color: SeraTokens.statusPendingReview.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.person_add_rounded,
-                  color: Color(0xFF6A1B9A), size: 20),
+                  color: SeraTokens.statusPendingReview, size: 20),
             ),
             const Gap(10),
             const Expanded(
@@ -1525,7 +1526,7 @@ class _AssignReviewerSheetState
                   Text(
                       'Reviewer will be notified on GitHub to review the BRD',
                       style:
-                          TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
+                          TextStyle(fontSize: 12, color: SeraTokens.fg3)),
                 ],
               ),
             ),
@@ -1571,9 +1572,9 @@ class _AssignReviewerSheetState
                           subtitle: Text('@${r.githubUsername}',
                               style: const TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF6B7A8D))),
+                                  color: SeraTokens.fg3)),
                           contentPadding: EdgeInsets.zero,
-                          activeColor: const Color(0xFF6A1B9A),
+                          activeColor: SeraTokens.statusPendingReview,
                         ))
                     .toList(),
               ),
@@ -1582,14 +1583,14 @@ class _AssignReviewerSheetState
             const Gap(8),
             Text(_error!,
                 style: const TextStyle(
-                    fontSize: 12, color: Color(0xFFE53935))),
+                    fontSize: 12, color: SeraTokens.statusChanges)),
           ],
           const Gap(16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6A1B9A)),
+                  backgroundColor: SeraTokens.statusPendingReview),
               onPressed: _submitting || _selected == null
                   ? null
                   : () async {
@@ -1705,10 +1706,10 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                   color:
-                      const Color(0xFFE53935).withValues(alpha: 0.1),
+                      SeraTokens.statusChanges.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.edit_note_rounded,
-                  color: Color(0xFFE53935), size: 20),
+                  color: SeraTokens.statusChanges, size: 20),
             ),
             const Gap(10),
             const Expanded(
@@ -1720,7 +1721,7 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
                           fontWeight: FontWeight.bold, fontSize: 17)),
                   Text('AI updates only the affected sections',
                       style: TextStyle(
-                          fontSize: 12, color: Color(0xFF6B7A8D))),
+                          fontSize: 12, color: SeraTokens.fg3)),
                 ],
               ),
             ),
@@ -2129,7 +2130,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
         // Mark as Ready — Draft state
         if (_isDraft)
           IconButton(
-            icon: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF1565C0)),
+            icon: const Icon(Icons.rocket_launch_rounded, color: SeraTokens.statusInProgress),
             tooltip: 'Start BRD Generation',
             onPressed: _openMarkReady,
           ),
@@ -2148,7 +2149,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               _note.status == 'In Review' ||
               _note.status == 'Changes Requested')
             IconButton(
-              icon: const Icon(Icons.person_add_rounded, color: Color(0xFF6A1B9A)),
+              icon: const Icon(Icons.person_add_rounded, color: SeraTokens.statusPendingReview),
               tooltip: _note.reviewers.isNotEmpty ? 'Add Another Reviewer' : 'Assign Reviewer',
               onPressed: _openAssignReviewer,
             ),
@@ -2212,13 +2213,13 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
               _prd!.status == 'In Review' ||
               _prd!.status == 'Changes Requested')
             IconButton(
-              icon: const Icon(Icons.person_add_rounded, color: Color(0xFF6A1B9A)),
+              icon: const Icon(Icons.person_add_rounded, color: SeraTokens.statusPendingReview),
               tooltip: _prd!.reviewers.isNotEmpty ? 'Add Another Reviewer' : 'Assign Reviewer',
               onPressed: _openPrdAssignReviewer,
             ),
           if (_prd!.status == 'In Review' || _prd!.status == 'Changes Requested')
             IconButton(
-              icon: const Icon(Icons.edit_note_rounded, color: Color(0xFFE53935)),
+              icon: const Icon(Icons.edit_note_rounded, color: SeraTokens.statusChanges),
               tooltip: 'Request PRD Update',
               onPressed: _openPrdRequestUpdate,
             ),
@@ -2310,7 +2311,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
           tabs: const [Tab(text: 'BRD Draft'), Tab(text: 'Versions'), Tab(text: 'Notes History')],
           labelColor: kPrimary,
           indicatorColor: kPrimary,
-          unselectedLabelColor: const Color(0xFF8896A5),
+          unselectedLabelColor: SeraTokens.muted,
         );
       } else if (_phase == 'prd' && _prdReady && _prdTabController != null) {
         phaseTabs = TabBar(
@@ -2320,7 +2321,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
           tabs: const [Tab(text: 'PRD Content'), Tab(text: 'Versions')],
           labelColor: kPrimary,
           indicatorColor: kPrimary,
-          unselectedLabelColor: const Color(0xFF8896A5),
+          unselectedLabelColor: SeraTokens.muted,
         );
       }
       final height = phaseTabs != null ? 96.0 : 48.0;
@@ -2358,7 +2359,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
         tabs: const [Tab(text: 'BRD Draft'), Tab(text: 'Versions'), Tab(text: 'Notes History')],
         labelColor: kPrimary,
         indicatorColor: kPrimary,
-        unselectedLabelColor: const Color(0xFF8896A5),
+        unselectedLabelColor: SeraTokens.muted,
       );
     }
     return null;
@@ -2402,7 +2403,7 @@ class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
             const Text(
               'The BRD is approved. Generate the\nProduct Requirements Document next.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Color(0xFF6B7A8D), height: 1.5),
+              style: TextStyle(fontSize: 14, color: SeraTokens.fg3, height: 1.5),
             ),
             const Gap(28),
             SizedBox(
@@ -2520,7 +2521,7 @@ class _StepButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = done
-        ? const Color(0xFF43A047)
+        ? SeraTokens.statusApproved
         : active
             ? kPrimary
             : const Color(0xFFB0BEC5);
@@ -2540,7 +2541,7 @@ class _StepButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (done)
-              const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF43A047))
+              const Icon(Icons.check_circle_rounded, size: 14, color: SeraTokens.statusApproved)
             else
               Container(
                 width: 10,
@@ -2620,10 +2621,10 @@ class _PrdAssignReviewerSheetInlineState
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: const Color(0xFF6A1B9A).withValues(alpha: 0.1),
+                  color: SeraTokens.statusPendingReview.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.person_add_rounded,
-                  color: Color(0xFF6A1B9A), size: 20),
+                  color: SeraTokens.statusPendingReview, size: 20),
             ),
             const Gap(10),
             const Expanded(
@@ -2633,7 +2634,7 @@ class _PrdAssignReviewerSheetInlineState
                   Text('Assign PRD Reviewer',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
                   Text('Reviewer will be notified on GitHub to review the PRD',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7A8D))),
+                      style: TextStyle(fontSize: 12, color: SeraTokens.fg3)),
                 ],
               ),
             ),
@@ -2674,9 +2675,9 @@ class _PrdAssignReviewerSheetInlineState
                                   fontSize: 14, fontWeight: FontWeight.w500)),
                           subtitle: Text('@${r.githubUsername}',
                               style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF6B7A8D))),
+                                  fontSize: 12, color: SeraTokens.fg3)),
                           contentPadding: EdgeInsets.zero,
-                          activeColor: const Color(0xFF6A1B9A),
+                          activeColor: SeraTokens.statusPendingReview,
                         ))
                     .toList(),
               ),
@@ -2684,14 +2685,14 @@ class _PrdAssignReviewerSheetInlineState
           if (_error != null) ...[
             const Gap(8),
             Text(_error!,
-                style: const TextStyle(fontSize: 12, color: Color(0xFFE53935))),
+                style: const TextStyle(fontSize: 12, color: SeraTokens.statusChanges)),
           ],
           const Gap(16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6A1B9A)),
+                  backgroundColor: SeraTokens.statusPendingReview),
               onPressed: _submitting || _selected == null
                   ? null
                   : () async {
@@ -2773,7 +2774,7 @@ class _PrdUpdateSheetInlineState extends State<_PrdUpdateSheetInline> {
           const Text('Request PRD Update', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           const Gap(4),
           const Text('Describe the changes you want. The AI will propose updates for your confirmation.',
-              style: TextStyle(fontSize: 13, color: Color(0xFF6B7A8D), height: 1.4)),
+              style: TextStyle(fontSize: 13, color: SeraTokens.fg3, height: 1.4)),
           const Gap(16),
           TextField(
             controller: _ctrl,
@@ -2866,7 +2867,7 @@ class _BrdDraftTab extends StatelessWidget {
                                 'GitHub issue linked · comments trigger AI updates',
                                 style: TextStyle(
                                     fontSize: 11,
-                                    color: Color(0xFF6B7A8D))),
+                                    color: SeraTokens.fg3)),
                         ],
                       ),
                     ),
@@ -2882,8 +2883,8 @@ class _BrdDraftTab extends StatelessWidget {
                       children: note.reviewers.map((r) {
                         final approved = r.status == 'Approved';
                         final color = approved
-                            ? const Color(0xFF43A047)
-                            : const Color(0xFF1E88E5);
+                            ? SeraTokens.statusApproved
+                            : SeraTokens.statusInReview;
                         return Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
@@ -3102,7 +3103,7 @@ class _VersionCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFF8F00)
+                          color: SeraTokens.statusInProgressWarm
                               .withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
                         ),
@@ -3111,7 +3112,7 @@ class _VersionCard extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFFFF8F00)),
+                              color: SeraTokens.statusInProgressWarm),
                         ),
                       ),
                     ],
@@ -3379,7 +3380,7 @@ class _BrdVersionScreen extends StatelessWidget {
               Text(
                 '${version.changedSections.length} section${version.changedSections.length == 1 ? '' : 's'} changed',
                 style: const TextStyle(
-                    fontSize: 12, color: Color(0xFFFF8F00)),
+                    fontSize: 12, color: SeraTokens.statusInProgressWarm),
               ),
           ],
         ),
@@ -3406,23 +3407,23 @@ class _BrdVersionScreen extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF8F00).withValues(alpha: 0.08),
+                  color: SeraTokens.statusInProgressWarm.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: const Color(0xFFFF8F00).withValues(alpha: 0.3)),
+                      color: SeraTokens.statusInProgressWarm.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Row(children: [
                       Icon(Icons.edit_note_rounded,
-                          size: 16, color: Color(0xFFFF8F00)),
+                          size: 16, color: SeraTokens.statusInProgressWarm),
                       Gap(6),
                       Text('Changed Sections',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: Color(0xFFFF8F00))),
+                              color: SeraTokens.statusInProgressWarm)),
                     ]),
                     const Gap(6),
                     Wrap(
@@ -3433,7 +3434,7 @@ class _BrdVersionScreen extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFF8F00)
+                                  color: SeraTokens.statusInProgressWarm
                                       .withValues(alpha: 0.12),
                                   borderRadius:
                                       BorderRadius.circular(6),
@@ -3442,7 +3443,7 @@ class _BrdVersionScreen extends StatelessWidget {
                                     style: const TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w500,
-                                        color: Color(0xFFFF8F00))),
+                                        color: SeraTokens.statusInProgressWarm)),
                               ))
                           .toList(),
                     ),
@@ -3454,13 +3455,13 @@ class _BrdVersionScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Icon(Icons.comment_outlined,
-                                size: 14, color: Color(0xFF6B7A8D)),
+                                size: 14, color: SeraTokens.fg3),
                             const Gap(6),
                             Expanded(
                               child: Text(version.reviewerComment!,
                                   style: const TextStyle(
                                       fontSize: 12,
-                                      color: Color(0xFF6B7A8D),
+                                      color: SeraTokens.fg3,
                                       fontStyle: FontStyle.italic)),
                             ),
                           ]),
@@ -3503,7 +3504,7 @@ class _BrdVersionScreen extends StatelessWidget {
                     decoration: const BoxDecoration(
                       border: Border(
                           left: BorderSide(
-                              color: Color(0xFFFF8F00), width: 3)),
+                              color: SeraTokens.statusInProgressWarm, width: 3)),
                     ),
                     child: Stack(children: [
                       Padding(
@@ -3521,7 +3522,7 @@ class _BrdVersionScreen extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF8F00)
+                            color: SeraTokens.statusInProgressWarm
                                 .withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
@@ -3529,7 +3530,7 @@ class _BrdVersionScreen extends StatelessWidget {
                               style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFFFF8F00))),
+                                  color: SeraTokens.statusInProgressWarm)),
                         ),
                       ),
                     ]),

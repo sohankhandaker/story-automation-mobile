@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
-import '../app.dart';
+import '../theme/sera_tokens.dart';
 import 'projects_screen.dart' show ProjectsTab, NewProjectSheet, projectsProvider;
 import 'customers_screen.dart' show CustomersTab, CustomerFormSheet, customersProvider;
 import 'settings_screen.dart' show SettingsTab;
@@ -40,7 +40,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(height: 1, color: const Color(0xFFF0F3F8)),
+          Container(height: 1, color: SeraTokens.divider),
           NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (i) => setState(() => _selectedIndex = i),
@@ -77,7 +77,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               backgroundColor: Colors.transparent,
               builder: (_) => const NewProjectSheet(),
             ),
-            backgroundColor: kPrimary,
+            backgroundColor: SeraTokens.primary,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.add_rounded),
             label: const Text('New Project',
@@ -90,7 +90,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               backgroundColor: Colors.transparent,
               builder: (_) => const CustomerFormSheet(),
             ),
-            backgroundColor: const Color(0xFF4F46E5),
+            backgroundColor: SeraTokens.primary,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.add_rounded),
             label: const Text('New Customer',
@@ -109,12 +109,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             SvgPicture.asset(
               'assets/images/selise_logo_white.svg',
               height: 22,
-              colorFilter: const ColorFilter.mode(kPrimary, BlendMode.srcIn),
+              colorFilter: const ColorFilter.mode(SeraTokens.primary, BlendMode.srcIn),
             ),
             const Gap(10),
-            Container(width: 1, height: 18, color: cs.outlineVariant),
+            Container(width: 1, height: 18, color: SeraTokens.border),
             const Gap(10),
-            Text('Story Automation',
+            Text('SERA',
                 style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -169,12 +169,16 @@ class _DashboardTab extends ConsumerWidget {
     final customers = customersAsync.valueOrNull ?? [];
 
     final loading = projectsAsync.isLoading && notesAsync.isLoading;
-    if (loading) return const Center(child: CircularProgressIndicator());
+    if (loading) {
+      return const Center(
+          child: CircularProgressIndicator(color: SeraTokens.primary));
+    }
 
     final actionNeeded = notes.where((n) => n.status == 'Pending Review').toList();
     final inProgress = notes.where((n) => n.status == 'In Progress').toList();
 
     return RefreshIndicator(
+      color: SeraTokens.primary,
       onRefresh: () async {
         await ref.read(projectsProvider.notifier).fetch();
         await ref.read(notesProvider.notifier).fetchNotes();
@@ -184,56 +188,55 @@ class _DashboardTab extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         children: [
-          _WelcomeBanner(),
+          const _WelcomeBanner(),
           const Gap(20),
-          // Stats row
           Row(
             children: [
               _StatCard(
                 icon: Icons.folder_rounded,
                 label: 'Projects',
                 count: projects.length,
-                color: kPrimary,
+                color: SeraTokens.primary,
               ),
               const Gap(10),
               _StatCard(
                 icon: Icons.business_rounded,
                 label: 'Customers',
                 count: customers.length,
-                color: const Color(0xFF4F46E5),
+                color: SeraTokens.statusPendingReview,
               ),
               const Gap(10),
               _StatCard(
                 icon: Icons.task_alt_rounded,
                 label: 'BRDs Done',
                 count: notes.where((n) => n.status == 'Approved').length,
-                color: const Color(0xFF43A047),
+                color: SeraTokens.statusApproved,
               ),
             ],
           ),
           if (actionNeeded.isNotEmpty) ...[
             const Gap(24),
-            _SectionHeader(
+            const _SectionHeader(
               title: 'Action Needed',
               icon: Icons.notification_important_rounded,
-              color: const Color(0xFF1E88E5),
+              color: SeraTokens.statusInfo,
             ),
             const Gap(10),
             ...actionNeeded.map((n) => _NoteActionCard(note: n)),
           ],
           if (inProgress.isNotEmpty) ...[
             const Gap(24),
-            _SectionHeader(
+            const _SectionHeader(
               title: 'In Progress',
               icon: Icons.autorenew_rounded,
-              color: const Color(0xFFFF8F00),
+              color: SeraTokens.statusInProgressWarm,
             ),
             const Gap(10),
             ...inProgress.map((n) => _NoteActionCard(note: n)),
           ],
           if (projects.isEmpty && notes.isEmpty) ...[
             const Gap(40),
-            _EmptyDashboard(),
+            const _EmptyDashboard(),
           ],
         ],
       ),
@@ -244,10 +247,16 @@ class _DashboardTab extends ConsumerWidget {
 // ── Welcome banner ────────────────────────────────────────────────────────────
 
 class _WelcomeBanner extends StatelessWidget {
+  const _WelcomeBanner();
+
   @override
   Widget build(BuildContext context) {
     final hour = DateTime.now().hour;
-    final greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
     final now = DateTime.now();
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     final dateStr = '${months[now.month - 1]} ${now.day}, ${now.year}';
@@ -255,52 +264,76 @@ class _WelcomeBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF04111F), Color(0xFF0A3468), Color(0xFF0D6FD8)],
-          stops: [0.0, 0.5, 1.0],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: kPrimary.withValues(alpha: 0.22),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        gradient: SeraTokens.heroGradient,
+        borderRadius: BorderRadius.circular(SeraTokens.r3xl),
+        boxShadow: SeraTokens.bannerGlow,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(width: 4, height: 4,
-                      decoration: const BoxDecoration(color: Color(0xFF40A9FF), shape: BoxShape.circle)),
-                  const Gap(7),
-                  Text(dateStr, style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 11.5)),
-                ]),
-                const Gap(10),
-                Text(greeting, style: const TextStyle(
-                    color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3, height: 1)),
-                const Gap(6),
-                const Text('BRD → PRD pipeline overview',
-                    style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13)),
-              ],
+          Positioned(
+            right: -20, top: -30,
+            child: Container(
+              width: 130, height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06), width: 1),
+              ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          Positioned(
+            right: 10, bottom: -20,
+            child: Container(
+              width: 70, height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: SeraTokens.accent.withValues(alpha: 0.18), width: 1),
+              ),
             ),
-            child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                        width: 4, height: 4,
+                        decoration: const BoxDecoration(
+                            color: SeraTokens.accent, shape: BoxShape.circle),
+                      ),
+                      const Gap(7),
+                      Text(dateStr,
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 11.5, letterSpacing: 0.3)),
+                    ]),
+                    const Gap(10),
+                    const Text('BRD → PRD pipeline overview',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3, height: 1)),
+                    const Gap(6),
+                    Text(greeting,
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 13)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(SeraTokens.rXl),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    color: Colors.white, size: 22),
+              ),
+            ],
           ),
         ],
       ),
@@ -316,7 +349,12 @@ class _StatCard extends StatelessWidget {
   final int count;
   final Color color;
 
-  const _StatCard({required this.icon, required this.label, required this.count, required this.color});
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -324,25 +362,40 @@ class _StatCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          color: SeraTokens.surfaceCard,
+          borderRadius: BorderRadius.circular(SeraTokens.rXl),
           border: Border.all(color: color.withValues(alpha: 0.18)),
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 3))],
+          boxShadow: [
+            BoxShadow(
+                color: color.withValues(alpha: 0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 3)),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(9)),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(SeraTokens.rSm)),
               child: Icon(icon, color: color, size: 16),
             ),
             const Gap(10),
             Text('$count',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800,
-                    color: Color(0xFF0D1B2A), letterSpacing: -0.5, height: 1)),
+                style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: SeraTokens.fg1,
+                    letterSpacing: -0.5,
+                    height: 1)),
             const Gap(2),
-            Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF8896A5), fontWeight: FontWeight.w600)),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: SeraTokens.muted,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -357,7 +410,8 @@ class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final Color color;
 
-  const _SectionHeader({required this.title, required this.icon, required this.color});
+  const _SectionHeader(
+      {required this.title, required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -365,18 +419,23 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(SeraTokens.rXs)),
           child: Icon(icon, size: 14, color: color),
         ),
         const Gap(8),
-        Text(title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13,
-            color: Theme.of(context).colorScheme.onSurface)),
+        Text(title,
+            style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: SeraTokens.fg1)),
       ],
     );
   }
 }
 
-// ── Note action card (minimal, tap goes to Notes tab) ─────────────────────────
+// ── Note action card ──────────────────────────────────────────────────────────
 
 class _NoteActionCard extends StatelessWidget {
   final MeetingNote note;
@@ -384,44 +443,58 @@ class _NoteActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const statusColors = {
-      'Pending Review': Color(0xFF1E88E5),
-      'In Progress': Color(0xFFFF8F00),
-      'In Review': Color(0xFF8E24AA),
-      'Changes Requested': Color(0xFFE53935),
-    };
-    final color = statusColors[note.status] ?? kPrimary;
+    final color = SeraTokens.statusColors[note.status] ?? SeraTokens.primary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8EDF5)),
+        color: SeraTokens.surfaceCard,
+        borderRadius: BorderRadius.circular(SeraTokens.rLg),
+        border: Border.all(color: SeraTokens.border),
+        boxShadow: SeraTokens.cardShadow,
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
         child: Row(
           children: [
             Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(9)),
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(SeraTokens.rSm)),
               child: Icon(Icons.description_rounded, size: 17, color: color),
             ),
             const Gap(11),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(note.title ?? 'Untitled Note', maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, color: Color(0xFF0D1B2A))),
-                const Gap(3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(20)),
-                  child: Text(note.status, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: color)),
-                ),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(note.title ?? 'Untitled Note',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                            color: SeraTokens.fg1)),
+                    const Gap(3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.10),
+                          borderRadius:
+                              BorderRadius.circular(SeraTokens.rPill)),
+                      child: Text(note.status,
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: color)),
+                    ),
+                  ]),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFFCBD5E1), size: 18),
+            const Icon(Icons.chevron_right_rounded,
+                color: SeraTokens.disabled, size: 18),
           ],
         ),
       ),
@@ -432,22 +505,33 @@ class _NoteActionCard extends StatelessWidget {
 // ── Empty dashboard ───────────────────────────────────────────────────────────
 
 class _EmptyDashboard extends StatelessWidget {
+  const _EmptyDashboard();
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(color: kPrimaryLight, borderRadius: BorderRadius.circular(24)),
-          child: const Icon(Icons.auto_awesome_rounded, size: 38, color: kPrimary),
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+              color: SeraTokens.primaryLight,
+              borderRadius: BorderRadius.circular(SeraTokens.rLogo)),
+          child: const Icon(Icons.auto_awesome_rounded,
+              size: 38, color: SeraTokens.primary),
         ),
         const Gap(18),
         const Text('Welcome to Story Automation',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16,
-                color: Color(0xFF0D1B2A), letterSpacing: -0.2)),
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: SeraTokens.fg1,
+                letterSpacing: -0.2)),
         const Gap(8),
-        const Text('Start by adding a Customer, then create\na Project to begin your BRD pipeline.',
-            style: TextStyle(color: Color(0xFF6B7A8D), fontSize: 13.5, height: 1.5),
+        const Text(
+            'Start by adding a Customer, then create\na Project to begin your BRD pipeline.',
+            style: TextStyle(
+                color: SeraTokens.fg3, fontSize: 13.5, height: 1.5),
             textAlign: TextAlign.center),
       ],
     );

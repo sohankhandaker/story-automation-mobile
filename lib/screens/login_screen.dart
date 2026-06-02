@@ -1,9 +1,11 @@
+// lib/screens/login_screen.dart — refactored to use SeraTokens / gradients.
+// Behaviour is identical to your original; colors & gradients are tokenised.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:gap/gap.dart';
-import '../app.dart';
 import '../providers/auth_provider.dart';
+import '../theme/sera_tokens.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -33,13 +35,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   void initState() {
     super.initState();
     _fadeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
+        vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
-
-    // Clear API error as soon as the user edits any field
     for (final ctrl in [_nameCtrl, _emailCtrl, _passCtrl, _confirmPassCtrl]) {
       ctrl.addListener(_clearApiError);
     }
@@ -74,7 +72,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     } else {
       await auth.login(_emailCtrl.text.trim(), _passCtrl.text);
     }
-    // Navigation is handled by _AppRoot reacting to auth state change
   }
 
   void _toggleMode() {
@@ -90,7 +87,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     });
     _fadeCtrl.forward();
     final scope = FocusScope.of(context);
-    Future.microtask(() => scope.requestFocus(_isRegister ? _nameFocus : _emailFocus));
+    Future.microtask(
+        () => scope.requestFocus(_isRegister ? _nameFocus : _emailFocus));
   }
 
   @override
@@ -116,30 +114,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Title
                       Text(
                         _isRegister ? 'Create account' : 'Welcome back',
                         style: const TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0D1B2A),
+                          color: SeraTokens.fg1,
                           letterSpacing: -0.5,
                         ),
                       ),
-                      const Gap(5),
+                      const SizedBox(height: 5),
                       Text(
                         _isRegister
                             ? 'Sign up to start automating your stories'
-                            : 'Sign in to continue to Story Automation',
+                            : 'Sign in to continue to SERA',
                         style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7A8D),
-                          height: 1.4,
-                        ),
+                            fontSize: 14, color: SeraTokens.fg3, height: 1.4),
                       ),
-                      const Gap(28),
-
-                      // Form
+                      const SizedBox(height: 28),
                       Form(
                         key: _formKey,
                         child: Column(
@@ -155,10 +147,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 textInputAction: TextInputAction.next,
                                 onFieldSubmitted: (_) => FocusScope.of(context)
                                     .requestFocus(_emailFocus),
-                                validator: (v) =>
-                                    v!.isEmpty ? 'Required' : null,
+                                validator: (v) => v!.isEmpty ? 'Required' : null,
                               ),
-                              const Gap(14),
+                              const SizedBox(height: 14),
                             ],
                             _Field(
                               controller: _emailCtrl,
@@ -178,14 +169,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 return null;
                               },
                             ),
-                            const Gap(14),
+                            const SizedBox(height: 14),
                             _Field(
                               controller: _passCtrl,
                               focusNode: _passFocus,
                               label: 'Password',
                               icon: Icons.lock_outline_rounded,
                               obscureText: _obscure,
-                              helperText: _isRegister ? 'At least 6 characters' : null,
+                              helperText:
+                                  _isRegister ? 'At least 6 characters' : null,
                               textInputAction: _isRegister
                                   ? TextInputAction.next
                                   : TextInputAction.done,
@@ -201,14 +193,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                       ? Icons.visibility_off_outlined
                                       : Icons.visibility_outlined,
                                   size: 20,
-                                  color: const Color(0xFF8896A5),
+                                  color: SeraTokens.muted,
                                 ),
                                 onPressed: () =>
                                     setState(() => _obscure = !_obscure),
                               ),
                             ),
                             if (_isRegister) ...[
-                              const Gap(14),
+                              const SizedBox(height: 14),
                               _Field(
                                 controller: _confirmPassCtrl,
                                 focusNode: _confirmPassFocus,
@@ -230,23 +222,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                         ? Icons.visibility_off_outlined
                                         : Icons.visibility_outlined,
                                     size: 20,
-                                    color: const Color(0xFF8896A5),
+                                    color: SeraTokens.muted,
                                   ),
-                                  onPressed: () => setState(
-                                      () => _confirmObscure = !_confirmObscure),
+                                  onPressed: () => setState(() =>
+                                      _confirmObscure = !_confirmObscure),
                                 ),
                               ),
                             ],
-
-                            // Error
                             if (state.error != null) ...[
-                              const Gap(14),
+                              const SizedBox(height: 14),
                               _ErrorBanner(message: state.error!),
                             ],
-
-                            const Gap(24),
-
-                            // Submit button
+                            const SizedBox(height: 24),
                             _GradientButton(
                               loading: state.loading,
                               label:
@@ -256,10 +243,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           ],
                         ),
                       ),
-
-                      const Gap(22),
-
-                      // Toggle
+                      const SizedBox(height: 22),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -268,9 +252,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 ? 'Already have an account? '
                                 : "Don't have an account? ",
                             style: const TextStyle(
-                              color: Color(0xFF6B7A8D),
-                              fontSize: 14,
-                            ),
+                                color: SeraTokens.fg3, fontSize: 14),
                           ),
                           InkWell(
                             onTap: _toggleMode,
@@ -281,7 +263,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               child: Text(
                                 _isRegister ? 'Sign In' : 'Register',
                                 style: const TextStyle(
-                                  color: kPrimary,
+                                  color: SeraTokens.primary,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 14,
                                 ),
@@ -302,11 +284,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 }
 
-// ── Hero header ────────────────────────────────────────────────────────────────
+// ── Hero header ───────────────────────────────────────────────────────────────
 
 class _HeroHeader extends StatelessWidget {
   final Size size;
   const _HeroHeader({required this.size});
+
+  Widget _ring(double s, Color color, double opacity) => Container(
+        width: s,
+        height: s,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color.withValues(alpha: opacity), width: 1),
+        ),
+      );
+
+  Widget _glowDot(double s, Color color, double opacity) => Container(
+        width: s,
+        height: s,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withValues(alpha: opacity),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: opacity * 0.5),
+              blurRadius: s * 2,
+              spreadRadius: s * 0.5,
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -315,54 +322,26 @@ class _HeroHeader extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Gradient background
           Container(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF04111F),
-                  Color(0xFF0A3468),
-                  Color(0xFF0D6FD8),
-                ],
-                stops: [0.0, 0.5, 1.0],
-              ),
+              gradient: SeraTokens.heroGradient,
               borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(32),
-                bottomRight: Radius.circular(32),
+                bottomLeft: Radius.circular(SeraTokens.rHero),
+                bottomRight: Radius.circular(SeraTokens.rHero),
               ),
             ),
           ),
-
-          // Decorative rings
+          Positioned(top: -60, right: -50, child: _ring(220, Colors.white, 0.05)),
+          Positioned(top: 20, right: 30, child: _ring(100, SeraTokens.primary, 0.15)),
+          Positioned(bottom: -80, left: -60, child: _ring(240, SeraTokens.primary, 0.08)),
           Positioned(
-            top: -60,
-            right: -50,
-            child: _ring(220, Colors.white, 0.05),
-          ),
+              top: size.height * 0.14,
+              right: 24,
+              child: _glowDot(12, SeraTokens.accent, 0.6)),
           Positioned(
-            top: 20,
-            right: 30,
-            child: _ring(100, const Color(0xFF188BFF), 0.15),
-          ),
-          Positioned(
-            bottom: -80,
-            left: -60,
-            child: _ring(240, const Color(0xFF188BFF), 0.08),
-          ),
-          Positioned(
-            top: size.height * 0.14,
-            right: 24,
-            child: _glowDot(12, const Color(0xFF40A9FF), 0.6),
-          ),
-          Positioned(
-            top: size.height * 0.06,
-            left: size.width * 0.45,
-            child: _glowDot(6, Colors.white, 0.3),
-          ),
-
-          // Content
+              top: size.height * 0.06,
+              left: size.width * 0.45,
+              child: _glowDot(6, Colors.white, 0.3)),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
@@ -370,15 +349,13 @@ class _HeroHeader extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // SELISE logo
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(SeraTokens.rLg),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.14),
-                      ),
+                          color: Colors.white.withValues(alpha: 0.14)),
                     ),
                     child: SvgPicture.asset(
                       'assets/images/selise_logo_white.svg',
@@ -387,9 +364,9 @@ class _HeroHeader extends StatelessWidget {
                           Colors.white, BlendMode.srcIn),
                     ),
                   ),
-                  const Gap(20),
+                  const SizedBox(height: 20),
                   const Text(
-                    'Story Automation',
+                    'SERA',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -397,22 +374,20 @@ class _HeroHeader extends StatelessWidget {
                       letterSpacing: -0.6,
                     ),
                   ),
-                  const Gap(6),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Container(
                         width: 3,
                         height: 3,
                         decoration: const BoxDecoration(
-                          color: Color(0xFF40A9FF),
-                          shape: BoxShape.circle,
-                        ),
+                            color: SeraTokens.accent, shape: BoxShape.circle),
                       ),
-                      const Gap(8),
-                      const Text(
+                      const SizedBox(width: 8),
+                      Text(
                         'BRD · PRD · GitHub — AI does the rest',
                         style: TextStyle(
-                          color: Color(0xB3FFFFFF),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 13.5,
                           letterSpacing: 0.1,
                         ),
@@ -422,38 +397,6 @@ class _HeroHeader extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _ring(double size, Color color, double opacity) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: color.withValues(alpha: opacity),
-          width: 1,
-        ),
-      ),
-    );
-  }
-
-  Widget _glowDot(double size, Color color, double opacity) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: opacity),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: opacity * 0.5),
-            blurRadius: size * 2,
-            spreadRadius: size * 0.5,
           ),
         ],
       ),
@@ -480,24 +423,12 @@ class _GradientButton extends StatelessWidget {
       height: 52,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: onPressed != null
-              ? const LinearGradient(
-                  colors: [Color(0xFF188BFF), Color(0xFF0A6FE8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          gradient: onPressed != null ? SeraTokens.buttonGradient : null,
+          color: onPressed == null
+              ? SeraTokens.primary.withValues(alpha: 0.4)
               : null,
-          color: onPressed == null ? kPrimary.withValues(alpha: 0.4) : null,
-          boxShadow: onPressed != null
-              ? [
-                  BoxShadow(
-                    color: kPrimary.withValues(alpha: 0.30),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
+          boxShadow: onPressed != null ? SeraTokens.buttonGlow : null,
         ),
         child: ElevatedButton(
           onPressed: onPressed,
@@ -506,7 +437,7 @@ class _GradientButton extends StatelessWidget {
             shadowColor: Colors.transparent,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(SeraTokens.rLg)),
             padding: EdgeInsets.zero,
           ),
           child: loading
@@ -514,9 +445,7 @@ class _GradientButton extends StatelessWidget {
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
+                      strokeWidth: 2, color: Colors.white),
                 )
               : Text(
                   label,
@@ -543,23 +472,20 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF2F2),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFFFCDD2)),
+        color: SeraTokens.errorBg,
+        borderRadius: BorderRadius.circular(SeraTokens.rMd),
+        border: Border.all(color: SeraTokens.errorBorder),
       ),
       child: Row(
         children: [
           const Icon(Icons.error_outline_rounded,
-              size: 16, color: Color(0xFFEF4444)),
-          const Gap(9),
+              size: 16, color: SeraTokens.error),
+          const SizedBox(width: 9),
           Expanded(
             child: Text(
               message,
               style: const TextStyle(
-                color: Color(0xFFB91C1C),
-                fontSize: 13,
-                height: 1.3,
-              ),
+                  color: SeraTokens.errorText, fontSize: 13, height: 1.3),
             ),
           ),
         ],
@@ -612,13 +538,13 @@ class _Field extends StatelessWidget {
       autocorrect: !obscureText,
       enableSuggestions: !obscureText,
       validator: validator,
-      style: const TextStyle(fontSize: 15, color: Color(0xFF0D1B2A)),
+      style: const TextStyle(fontSize: 15, color: SeraTokens.fg1),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, size: 19, color: const Color(0xFF8896A5)),
+        prefixIcon: Icon(icon, size: 19, color: SeraTokens.muted),
         suffixIcon: suffixIcon,
         helperText: helperText,
-        helperStyle: const TextStyle(fontSize: 12, color: Color(0xFF8896A5)),
+        helperStyle: const TextStyle(fontSize: 12, color: SeraTokens.muted),
       ),
     );
   }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../app.dart';
+import '../theme/sera_tokens.dart';
 import '../core/api.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -200,8 +200,8 @@ class _CustomerCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8EDF5)),
+        borderRadius: BorderRadius.circular(SeraTokens.r2xl),
+        border: Border.all(color: SeraTokens.border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -220,7 +220,7 @@ class _CustomerCard extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 color: const Color(0xFFEEF2FF),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(SeraTokens.rLg),
               ),
               child: const Icon(Icons.business_rounded,
                   color: Color(0xFF4F46E5), size: 22),
@@ -235,7 +235,7 @@ class _CustomerCard extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14.5,
-                      color: Color(0xFF0D1B2A),
+                      color: SeraTokens.fg1,
                     ),
                   ),
                   if (customer.shortDescription != null &&
@@ -247,7 +247,7 @@ class _CustomerCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12.5,
-                        color: Color(0xFF6B7A8D),
+                        color: SeraTokens.fg3,
                         height: 1.4,
                       ),
                     ),
@@ -261,13 +261,13 @@ class _CustomerCard extends StatelessWidget {
                           child: Row(
                             children: [
                               const Icon(Icons.link_rounded,
-                                  size: 13, color: kPrimary),
+                                  size: 13, color: SeraTokens.primary),
                               const Gap(4),
                               Text(
                                 _shortUrl(customer.url!),
                                 style: const TextStyle(
                                   fontSize: 11.5,
-                                  color: kPrimary,
+                                  color: SeraTokens.primary,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -279,15 +279,15 @@ class _CustomerCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
-                          color: kPrimaryLight,
-                          borderRadius: BorderRadius.circular(20),
+                          color: SeraTokens.primaryLight,
+                          borderRadius: BorderRadius.circular(SeraTokens.rPill),
                         ),
                         child: Text(
                           '${customer.projectsCount} project${customer.projectsCount == 1 ? '' : 's'}',
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: kPrimary,
+                            color: SeraTokens.primary,
                           ),
                         ),
                       ),
@@ -300,7 +300,7 @@ class _CustomerCard extends StatelessWidget {
               children: [
                 IconButton(
                   icon: const Icon(Icons.edit_rounded, size: 18),
-                  color: const Color(0xFF6B7A8D),
+                  color: SeraTokens.fg3,
                   tooltip: 'Edit',
                   onPressed: onEdit,
                 ),
@@ -406,7 +406,7 @@ class _CustomerFormSheetState extends ConsumerState<CustomerFormSheet> {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SeraTokens.rPill),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
@@ -433,7 +433,7 @@ class _CustomerFormSheetState extends ConsumerState<CustomerFormSheet> {
                     padding: const EdgeInsets.all(9),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEEF2FF),
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(SeraTokens.rMd),
                     ),
                     child: const Icon(Icons.business_rounded,
                         color: Color(0xFF4F46E5), size: 20),
@@ -444,7 +444,7 @@ class _CustomerFormSheetState extends ConsumerState<CustomerFormSheet> {
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF0D1B2A),
+                      color: SeraTokens.fg1,
                     ),
                   ),
                 ],
@@ -542,7 +542,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 17,
-                color: Color(0xFF0D1B2A),
+                color: SeraTokens.fg1,
               ),
             ),
             const Gap(8),
@@ -550,7 +550,7 @@ class _EmptyState extends StatelessWidget {
               'Tap + New Customer to add your first client.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7A8D),
+                color: SeraTokens.fg3,
                 fontSize: 13.5,
                 height: 1.5,
               ),
