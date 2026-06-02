@@ -228,6 +228,9 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
           .map((j) => MeetingNote.fromJson(j as Map<String, dynamic>))
           .toList();
       state = AsyncValue.data(list);
+    } on DioException catch (e, s) {
+      if (e.response?.statusCode == 401) return;
+      state = AsyncValue.error(e, s);
     } catch (e, s) {
       state = AsyncValue.error(e, s);
     }

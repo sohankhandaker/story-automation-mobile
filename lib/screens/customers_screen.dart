@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -39,6 +40,9 @@ class CustomersNotifier extends StateNotifier<AsyncValue<List<Customer>>> {
           .map((j) => Customer.fromJson(j as Map<String, dynamic>))
           .toList();
       state = AsyncValue.data(list);
+    } on DioException catch (e, s) {
+      if (e.response?.statusCode == 401) return;
+      state = AsyncValue.error(e, s);
     } catch (e, s) {
       state = AsyncValue.error(e, s);
     }

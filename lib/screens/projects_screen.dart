@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -55,6 +56,10 @@ class ProjectsNotifier extends StateNotifier<AsyncValue<List<Project>>> {
           .map((j) => Project.fromJson(j as Map<String, dynamic>))
           .toList();
       state = AsyncValue.data(list);
+    } on DioException catch (e, s) {
+      // 401 is handled by the auth interceptor (redirects to login) — don't surface it here
+      if (e.response?.statusCode == 401) return;
+      state = AsyncValue.error(e, s);
     } catch (e, s) {
       state = AsyncValue.error(e, s);
     }
@@ -111,6 +116,9 @@ class _ProjectNotesNotifier
           .map((j) => MeetingNote.fromJson(j as Map<String, dynamic>))
           .toList();
       state = AsyncValue.data(list);
+    } on DioException catch (e, s) {
+      if (e.response?.statusCode == 401) return;
+      state = AsyncValue.error(e, s);
     } catch (e, s) {
       state = AsyncValue.error(e, s);
     }
