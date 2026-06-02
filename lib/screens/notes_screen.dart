@@ -3286,6 +3286,14 @@ class _EntryCard extends StatefulWidget {
 class _EntryCardState extends State<_EntryCard> {
   bool _expanded = false;
 
+  String _entryTitle(String content) {
+    for (final line in content.split('\n')) {
+      final t = line.trim();
+      if (t.isNotEmpty) return t.length > 60 ? '${t.substring(0, 60)}…' : t;
+    }
+    return 'Note ${widget.index + 1}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -3336,12 +3344,16 @@ class _EntryCardState extends State<_EntryCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    Text(
-                      'Entry ${widget.index + 1}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: kPrimary),
+                    Expanded(
+                      child: Text(
+                        _entryTitle(widget.entry.content),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: kPrimary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     const Gap(8),
                     Text(
