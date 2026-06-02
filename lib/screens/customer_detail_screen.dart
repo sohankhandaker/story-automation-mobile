@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/api.dart';
 import '../theme/sera_tokens.dart';
 import 'customers_screen.dart' show Customer;
-import 'projects_screen.dart' show Project, ProjectDetailScreen, NewProjectSheet;
+import 'projects_screen.dart' show Project, ProjectDetailScreen, NewProjectSheet, projectsProvider;
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
@@ -172,8 +172,11 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                     sliver: SliverList.separated(
                       itemCount: projects.length,
                       separatorBuilder: (_, __) => const Gap(10),
-                      itemBuilder: (_, i) =>
-                          _ProjectTile(project: projects[i]),
+                      itemBuilder: (_, i) => _ProjectTile(
+                        project: projects[i],
+                        onDelete: () =>
+                            _confirmDeleteProject(context, ref, projects[i]),
+                      ),
                     ),
                   ),
           ),
@@ -196,6 +199,44 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
             .fetch();
       }
     });
+  }
+
+  void _confirmDeleteProject(
+      BuildContext context, WidgetRef ref, Project project) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Project'),
+        content: Text(
+            'Delete "${project.title}"? This will also delete all notes under this project.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final ok = await ref
+                  .read(projectsProvider.notifier)
+                  .delete(project.id);
+              if (ok && mounted) {
+                ref
+                    .read(customerProjectsProvider(widget.customer.id)
+                        .notifier)
+                    .fetch();
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Project deleted')),
+                );
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -317,7 +358,8 @@ class _CustomerInfoCard extends StatelessWidget {
 
 class _ProjectTile extends StatelessWidget {
   final Project project;
-  const _ProjectTile({required this.project});
+  final VoidCallback? onDelete;
+  const _ProjectTile({required this.project, this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +470,13 @@ class _ProjectTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Gap(6),
+                  if (onDelete != null)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          size: 20, color: Color(0xFFB0BEC5)),
+                      tooltip: 'Delete project',
+                      onPressed: onDelete,
+                    ),
                   const Icon(Icons.chevron_right_rounded,
                       color: SeraTokens.disabled, size: 20),
                 ],

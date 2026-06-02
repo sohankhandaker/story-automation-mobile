@@ -67,6 +67,16 @@ class ProjectsNotifier extends StateNotifier<AsyncValue<List<Project>>> {
     }
   }
 
+  Future<bool> delete(String projectId) async {
+    try {
+      await ApiClient.dio.delete('/api/projects/$projectId');
+      await fetch();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Project?> create({
     required String title,
     required String clientName,
@@ -656,6 +666,24 @@ class ProjectDetailScreen extends ConsumerWidget {
             onPressed: () =>
                 ref.read(projectNotesProvider(project.id).notifier).fetch(),
           ),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'delete') _confirmDelete(context, ref);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline_rounded,
+                      color: Colors.red, size: 20),
+                  title: Text('Delete Project',
+                      style: TextStyle(color: Colors.red)),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -748,6 +776,39 @@ class ProjectDetailScreen extends ConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _ProjectNoteSheet(projectId: project.id, ref: ref),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Project'),
+        content: Text(
+            'Delete "${project.title}"? This will also delete all notes under this project.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(context); // close dialog
+              final ok = await ref
+                  .read(projectsProvider.notifier)
+                  .delete(project.id);
+              if (ok && context.mounted) {
+                Navigator.pop(context); // go back to customer detail
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Project deleted')),
+                );
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 }
