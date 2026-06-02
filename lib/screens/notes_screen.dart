@@ -444,7 +444,7 @@ class NotesTab extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
             itemCount: notes.length,
-            itemBuilder: (_, i) => _NoteCard(note: notes[i]),
+            itemBuilder: (_, i) => NoteCard(note: notes[i]),
           ),
         );
       },
@@ -452,9 +452,9 @@ class NotesTab extends ConsumerWidget {
   }
 }
 
-class _NoteCard extends ConsumerWidget {
+class NoteCard extends ConsumerWidget {
   final MeetingNote note;
-  const _NoteCard({required this.note});
+  const NoteCard({super.key, required this.note});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
