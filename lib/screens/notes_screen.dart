@@ -1853,6 +1853,24 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _fetchAndInitPrd());
     }
+    // Always fetch fresh state from server on open — widget.note may be stale
+    // if the user navigated away during generation and the provider wasn't refreshed.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshOnOpen());
+  }
+
+  Future<void> _refreshOnOpen() async {
+    final updated =
+        await ref.read(notesProvider.notifier).pollNote(_note.id);
+    if (updated == null || !mounted) return;
+    setState(() {
+      _note = updated;
+      if (_brdReady && _tabController == null) _initTabs();
+    });
+    // Start polling if the note is now in a working / review state
+    // and polling hasn't already been started from initState.
+    if (_shouldPoll && _pollTimer == null) _startPolling();
+    // Load PRD if note just became approved and we didn't already start.
+    if (updated.status == 'Approved' && _prd == null) _fetchAndInitPrd();
   }
 
   void _initTabs() {
