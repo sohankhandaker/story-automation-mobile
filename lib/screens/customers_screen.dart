@@ -103,7 +103,8 @@ final customersProvider =
 
 class CustomersTab extends ConsumerWidget {
   final void Function(Customer)? onCustomerTap;
-  const CustomersTab({super.key, this.onCustomerTap});
+  final VoidCallback? onDeleted;
+  const CustomersTab({super.key, this.onCustomerTap, this.onDeleted});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -166,7 +167,7 @@ class CustomersTab extends ConsumerWidget {
       builder: (_) => AlertDialog(
         title: const Text('Delete Customer'),
         content: Text(
-            'Delete "${customer.name}"? This will not delete their projects.'),
+            'Delete "${customer.name}"? This will also delete all their projects and notes.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -176,7 +177,8 @@ class CustomersTab extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(context);
-              await ref.read(customersProvider.notifier).delete(customer.id);
+              final ok = await ref.read(customersProvider.notifier).delete(customer.id);
+              if (ok) onDeleted?.call();
             },
             child: const Text('Delete'),
           ),

@@ -45,6 +45,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const _DashboardTab(),
           CustomersTab(
             onCustomerTap: (c) => _openCustomerDetail(context, c),
+            onDeleted: () {
+              ref.read(projectsProvider.notifier).fetch();
+              ref.read(notesProvider.notifier).fetchNotes();
+            },
           ),
           const SettingsTab(),
         ],
