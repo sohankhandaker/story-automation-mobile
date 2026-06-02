@@ -382,7 +382,8 @@ class _MetaChip extends StatelessWidget {
 // ── New project sheet ─────────────────────────────────────────────────────────
 
 class NewProjectSheet extends ConsumerStatefulWidget {
-  const NewProjectSheet({super.key});
+  final Customer? preselectedCustomer;
+  const NewProjectSheet({super.key, this.preselectedCustomer});
 
   @override
   ConsumerState<NewProjectSheet> createState() => _NewProjectSheetState();
@@ -395,6 +396,12 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
   final _descCtrl = TextEditingController();
   Customer? _selectedCustomer;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCustomer = widget.preselectedCustomer;
+  }
 
   @override
   void dispose() {
@@ -1224,7 +1231,7 @@ class _CustomerPickerSheet extends StatelessWidget {
                       ),
                       child: Icon(Icons.business_rounded,
                           size: 18,
-                          color: isSelected ? SeraTokens.primary : const Color(0xFF4F46E5)),
+                          color: SeraTokens.primary),
                     ),
                     title: Text(c.name,
                         style: TextStyle(

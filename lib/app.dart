@@ -4,6 +4,10 @@ import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/notes_screen.dart' show notesProvider;
+import 'screens/projects_screen.dart' show projectsProvider, projectNotesProvider;
+import 'screens/customers_screen.dart' show customersProvider;
+import 'screens/customer_detail_screen.dart' show customerProjectsProvider;
 import 'theme/sera_tokens.dart';
 import 'theme/sera_theme.dart';
 
@@ -50,9 +54,28 @@ class _AppRootState extends ConsumerState<_AppRoot> {
     });
   }
 
+  /// Invalidates all data providers when a different user logs in so the new
+  /// user never sees another user's cached data.
+  void _invalidateDataProviders() {
+    ref.invalidate(notesProvider);
+    ref.invalidate(projectsProvider);
+    ref.invalidate(projectNotesProvider);
+    ref.invalidate(customersProvider);
+    ref.invalidate(customerProjectsProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+
+    // When a *different* user logs in, clear all cached data immediately.
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      final prevId = previous?.user?.id;
+      final nextId = next.user?.id;
+      if (nextId != null && prevId != null && prevId != nextId) {
+        _invalidateDataProviders();
+      }
+    });
     final showSplash = !_splashDone || auth.initializing;
 
     Widget child;

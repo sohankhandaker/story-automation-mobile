@@ -473,7 +473,7 @@ class NoteCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-              builder: (_) => _NoteDetailScreen(note: note)),
+              builder: (_) => NoteDetailScreen(note: note)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -756,7 +756,7 @@ class _NewNoteSheetState extends ConsumerState<NewNoteSheet> {
     Navigator.of(context).pop();
     if (note != null) {
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => _NoteDetailScreen(note: note),
+        builder: (_) => NoteDetailScreen(note: note),
       ));
     }
   }
@@ -1779,17 +1779,17 @@ class _RequestUpdateSheetState extends State<_RequestUpdateSheet> {
 
 // ── Note Detail Screen ────────────────────────────────────────────────────────
 
-class _NoteDetailScreen extends ConsumerStatefulWidget {
+class NoteDetailScreen extends ConsumerStatefulWidget {
   final MeetingNote note;
 
-  const _NoteDetailScreen({required this.note});
+  const NoteDetailScreen({super.key, required this.note});
 
   @override
-  ConsumerState<_NoteDetailScreen> createState() =>
-      _NoteDetailScreenState();
+  ConsumerState<NoteDetailScreen> createState() =>
+      NoteDetailScreenState();
 }
 
-class _NoteDetailScreenState extends ConsumerState<_NoteDetailScreen>
+class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
     with TickerProviderStateMixin {
   late MeetingNote _note;
   Timer? _pollTimer;

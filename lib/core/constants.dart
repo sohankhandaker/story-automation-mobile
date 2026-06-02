@@ -1,8 +1,13 @@
+import 'package:flutter/foundation.dart';
+
 class AppConstants {
-  // ── Change this to your Render.com URL after deployment ──────────────────
-  // Android emulator reaches host machine via 10.0.2.2
-  // Change to your Render URL before building the stakeholder APK
-  static const String baseUrl = 'https://story-automation-api.onrender.com';
+  static const _prodUrl = 'https://story-automation-api.onrender.com';
+  // Local backend via Android emulator — only used in debug builds.
+  // Switch _debugUrl to _prodUrl if you want debug to hit production too.
+  static const _debugUrl = 'https://story-automation-api.onrender.com';
+
+  // Release builds always use _prodUrl — no accidental local URLs in APK.
+  static const String baseUrl = kReleaseMode ? _prodUrl : _debugUrl;
 
   // Status display names
   static const Map<String, String> statusLabels = {

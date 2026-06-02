@@ -102,7 +102,8 @@ final customersProvider =
 // ── Customers tab ─────────────────────────────────────────────────────────────
 
 class CustomersTab extends ConsumerWidget {
-  const CustomersTab({super.key});
+  final void Function(Customer)? onCustomerTap;
+  const CustomersTab({super.key, this.onCustomerTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,6 +139,9 @@ class CustomersTab extends ConsumerWidget {
                 separatorBuilder: (_, __) => const Gap(10),
                 itemBuilder: (_, i) => _CustomerCard(
                   customer: customers[i],
+                  onTap: onCustomerTap != null
+                      ? () => onCustomerTap!(customers[i])
+                      : null,
                   onEdit: () => _showSheet(context, ref, customers[i]),
                   onDelete: () => _confirmDelete(context, ref, customers[i]),
                 ),
@@ -186,45 +190,50 @@ class CustomersTab extends ConsumerWidget {
 
 class _CustomerCard extends StatelessWidget {
   final Customer customer;
+  final VoidCallback? onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _CustomerCard({
     required this.customer,
+    this.onTap,
     required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(SeraTokens.r2xl),
-        border: Border.all(color: SeraTokens.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEEF2FF),
-                borderRadius: BorderRadius.circular(SeraTokens.rLg),
-              ),
-              child: const Icon(Icons.business_rounded,
-                  color: Color(0xFF4F46E5), size: 22),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(SeraTokens.r2xl),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(SeraTokens.r2xl),
+          border: Border.all(color: SeraTokens.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: SeraTokens.primaryLight,
+                  borderRadius: BorderRadius.circular(SeraTokens.rLg),
+                ),
+                child: const Icon(Icons.business_rounded,
+                    color: SeraTokens.primary, size: 22),
+              ),
             const Gap(12),
             Expanded(
               child: Column(
@@ -313,6 +322,7 @@ class _CustomerCard extends StatelessWidget {
               ],
             ),
           ],
+          ),
         ),
       ),
     );
@@ -436,7 +446,7 @@ class _CustomerFormSheetState extends ConsumerState<CustomerFormSheet> {
                       borderRadius: BorderRadius.circular(SeraTokens.rMd),
                     ),
                     child: const Icon(Icons.business_rounded,
-                        color: Color(0xFF4F46E5), size: 20),
+                        color: SeraTokens.primary, size: 20),
                   ),
                   const Gap(12),
                   Text(
@@ -493,7 +503,7 @@ class _CustomerFormSheetState extends ConsumerState<CustomerFormSheet> {
                 child: FilledButton(
                   onPressed: _loading ? null : _submit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF4F46E5),
+                    backgroundColor: SeraTokens.primary,
                   ),
                   child: _loading
                       ? const SizedBox(
@@ -534,7 +544,7 @@ class _EmptyState extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
               ),
               child: const Icon(Icons.business_rounded,
-                  size: 40, color: Color(0xFF4F46E5)),
+                  size: 40, color: SeraTokens.primary),
             ),
             const Gap(20),
             const Text(

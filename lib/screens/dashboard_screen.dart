@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import '../theme/sera_tokens.dart';
-import 'projects_screen.dart' show ProjectsTab, NewProjectSheet, projectsProvider;
-import 'customers_screen.dart' show CustomersTab, CustomerFormSheet, customersProvider;
+import 'projects_screen.dart' show projectsProvider;
+import 'customers_screen.dart' show Customer, CustomersTab, CustomerFormSheet, customersProvider;
+import 'customer_detail_screen.dart' show CustomerDetailScreen;
 import 'settings_screen.dart' show SettingsTab;
-import 'notes_screen.dart' show notesProvider, MeetingNote;
+import 'notes_screen.dart' show notesProvider, MeetingNote, NoteDetailScreen;
 
 // ── Dashboard shell ───────────────────────────────────────────────────────────
 
@@ -20,7 +21,17 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _selectedIndex = 0;
 
-  static const _titles = ['Dashboard', 'Projects', 'Customers', 'Settings'];
+  // 0 = Dashboard, 1 = Customers, 2 = Settings
+  static const _titles = ['Dashboard', 'Customers', 'Settings'];
+
+  void _openCustomerDetail(BuildContext context, Customer customer) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CustomerDetailScreen(customer: customer),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +41,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       appBar: _buildAppBar(cs),
       body: IndexedStack(
         index: _selectedIndex,
-        children: const [
-          _DashboardTab(),
-          ProjectsTab(),
-          CustomersTab(),
-          SettingsTab(),
+        children: [
+          const _DashboardTab(),
+          CustomersTab(
+            onCustomerTap: (c) => _openCustomerDetail(context, c),
+          ),
+          const SettingsTab(),
         ],
       ),
       bottomNavigationBar: Column(
@@ -51,14 +63,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 label: 'Dashboard',
               ),
               NavigationDestination(
-                icon: Icon(Icons.folder_outlined),
-                selectedIcon: Icon(Icons.folder_rounded),
-                label: 'Projects',
-              ),
-              NavigationDestination(
                 icon: Icon(Icons.business_outlined),
                 selectedIcon: Icon(Icons.business_rounded),
-                label: 'Customer',
+                label: 'Customers',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
@@ -69,35 +76,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      floatingActionButton: switch (_selectedIndex) {
-        1 => FloatingActionButton.extended(
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => const NewProjectSheet(),
-            ),
-            backgroundColor: SeraTokens.primary,
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('New Project',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-          ),
-        2 => FloatingActionButton.extended(
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => const CustomerFormSheet(),
-            ),
-            backgroundColor: SeraTokens.primary,
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('New Customer',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-          ),
-        _ => null,
-      },
+      floatingActionButton: _selectedIndex == 1
+          ? FloatingActionButton.extended(
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const CustomerFormSheet(),
+              ),
+              backgroundColor: SeraTokens.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('New Customer',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            )
+          : null,
     );
   }
 
@@ -109,7 +102,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             SvgPicture.asset(
               'assets/images/selise_logo_white.svg',
               height: 22,
-              colorFilter: const ColorFilter.mode(SeraTokens.primary, BlendMode.srcIn),
+              colorFilter: const ColorFilter.mode(
+                  SeraTokens.primary, BlendMode.srcIn),
             ),
             const Gap(10),
             Container(width: 1, height: 18, color: SeraTokens.border),
@@ -141,11 +135,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         if (_selectedIndex == 1)
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.read(projectsProvider.notifier).fetch(),
-          ),
-        if (_selectedIndex == 2)
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Refresh',
             onPressed: () => ref.read(customersProvider.notifier).fetch(),
           ),
       ],
@@ -445,57 +435,63 @@ class _NoteActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = SeraTokens.statusColors[note.status] ?? SeraTokens.primary;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: SeraTokens.surfaceCard,
-        borderRadius: BorderRadius.circular(SeraTokens.rLg),
-        border: Border.all(color: SeraTokens.border),
-        boxShadow: SeraTokens.cardShadow,
+    return InkWell(
+      borderRadius: BorderRadius.circular(SeraTokens.rLg),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => NoteDetailScreen(note: note)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(SeraTokens.rSm)),
-              child: Icon(Icons.description_rounded, size: 17, color: color),
-            ),
-            const Gap(11),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(note.title ?? 'Untitled Note',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13.5,
-                            color: SeraTokens.fg1)),
-                    const Gap(3),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.10),
-                          borderRadius:
-                              BorderRadius.circular(SeraTokens.rPill)),
-                      child: Text(note.status,
-                          style: TextStyle(
-                              fontSize: 10.5,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: SeraTokens.surfaceCard,
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          border: Border.all(color: SeraTokens.border),
+          boxShadow: SeraTokens.cardShadow,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(SeraTokens.rSm)),
+                child: Icon(Icons.description_rounded, size: 17, color: color),
+              ),
+              const Gap(11),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(note.title ?? 'Untitled Note',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: color)),
-                    ),
-                  ]),
-            ),
-            const Icon(Icons.chevron_right_rounded,
-                color: SeraTokens.disabled, size: 18),
-          ],
+                              fontSize: 13.5,
+                              color: SeraTokens.fg1)),
+                      const Gap(3),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.10),
+                            borderRadius:
+                                BorderRadius.circular(SeraTokens.rPill)),
+                        child: Text(note.status,
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: color)),
+                      ),
+                    ]),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: SeraTokens.disabled, size: 18),
+            ],
+          ),
         ),
       ),
     );
