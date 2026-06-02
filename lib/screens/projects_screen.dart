@@ -1,14 +1,19 @@
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api.dart';
 import '../theme/sera_tokens.dart';
 import 'notes_screen.dart' show MeetingNote, NoteCard;
 import 'customers_screen.dart' show Customer, customersProvider, CustomerFormSheet;
+import 'shared_widgets.dart' show WikiUrlInput;
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -777,7 +782,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ProjectNoteSheet(projectId: project.id, ref: ref),
+      builder: (_) => _ProjectNoteSheet(projectId: project.id),
     );
   }
 
@@ -962,126 +967,235 @@ class _ProjectInfoCard extends StatelessWidget {
   }
 }
 
-// ── Add note sheet for project ────────────────────────────────────────────────
+// ── Attachment helper ─────────────────────────────────────────────────────────
 
-class _ProjectNoteSheet extends StatefulWidget {
-  final String projectId;
-  final WidgetRef ref;
-  const _ProjectNoteSheet({required this.projectId, required this.ref});
-
-  @override
-  State<_ProjectNoteSheet> createState() => _ProjectNoteSheetState();
+class _ProjAttachedFile {
+  final String name;
+  final Uint8List bytes;
+  final bool isImage;
+  const _ProjAttachedFile(
+      {required this.name, required this.bytes, required this.isImage});
 }
 
-class _ProjectNoteSheetState extends State<_ProjectNoteSheet> {
-  final _notesCtrl = TextEditingController();
-  final _wikiCtrl = TextEditingController();
-  bool _loading = false;
+// ── Add note sheet for project ────────────────────────────────────────────────
+
+class _ProjectNoteSheet extends ConsumerStatefulWidget {
+  final String projectId;
+  const _ProjectNoteSheet({required this.projectId});
 
   @override
-  void dispose() {
-    _notesCtrl.dispose();
-    _wikiCtrl.dispose();
-    super.dispose();
+  ConsumerState<_ProjectNoteSheet> createState() => _ProjectNoteSheetState();
+}
+
+class _ProjectNoteSheetState extends ConsumerState<_ProjectNoteSheet> {
+  final _notesCtrl = TextEditingController();
+  final _wikiCtrl = TextEditingController();
+  final _stt = SpeechToText();
+  final _imagePicker = ImagePicker();
+
+  bool _sttAvailable = false;
+  bool _listening = false;
+  bool _loading = false;
+  String _partialText = '';
+  final List<_ProjAttachedFile> _attachments = [];
+  final List<String> _wikiUrls = [];
+
+  void _addWikiUrl() {
+    final url = _wikiCtrl.text.trim();
+    if (url.isEmpty) return;
+    if (!_wikiUrls.contains(url)) setState(() => _wikiUrls.add(url));
+    _wikiCtrl.clear();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initStt();
+  }
+
+  Future<void> _initStt() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) return;
+    final ok = await _stt.initialize(
+      onStatus: (s) {
+        if (mounted) setState(() => _listening = s == 'listening');
+      },
+      onError: (_) {
+        if (mounted) setState(() { _listening = false; _partialText = ''; });
+      },
+    );
+    if (mounted) setState(() => _sttAvailable = ok);
+  }
+
+  Future<void> _toggleListening() async {
+    if (_listening) {
+      await _stt.stop();
+      setState(() { _listening = false; _partialText = ''; });
+      return;
+    }
+    setState(() { _listening = true; _partialText = ''; });
+    await _stt.listen(
+      onResult: (r) {
+        if (r.finalResult) {
+          final cur = _notesCtrl.text;
+          final appended =
+              cur.isEmpty ? r.recognizedWords : '$cur ${r.recognizedWords}';
+          setState(() {
+            _notesCtrl.text = appended;
+            _notesCtrl.selection =
+                TextSelection.collapsed(offset: appended.length);
+            _listening = false;
+            _partialText = '';
+          });
+        } else {
+          setState(() => _partialText = r.recognizedWords);
+        }
+      },
+      listenOptions: SpeechListenOptions(
+        listenFor: const Duration(minutes: 5),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+      ),
+    );
+  }
+
+  Future<void> _pickImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Photo Library'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_rounded),
+            title: const Text('Camera'),
+            onTap: () => Navigator.pop(context, ImageSource.camera),
+          ),
+        ]),
+      ),
+    );
+    if (source == null) return;
+    final picked = await _imagePicker.pickImage(
+        source: source, imageQuality: 80, maxWidth: 1920);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    setState(() => _attachments
+        .add(_ProjAttachedFile(name: picked.name, bytes: bytes, isImage: true)));
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'txt', 'doc', 'docx', 'md'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final f = result.files.first;
+    if (f.bytes == null) return;
+    setState(() => _attachments
+        .add(_ProjAttachedFile(name: f.name, bytes: f.bytes!, isImage: false)));
   }
 
   Future<void> _submit() async {
     final raw = _notesCtrl.text.trim();
     if (raw.isEmpty) return;
+    if (_wikiCtrl.text.trim().isNotEmpty) _addWikiUrl();
     setState(() => _loading = true);
 
-    final note = await widget.ref
+    final note = await ref
         .read(projectNotesProvider(widget.projectId).notifier)
-        .createNote(raw, _wikiCtrl.text.trim().isEmpty ? null : _wikiCtrl.text.trim());
+        .createNote(
+            raw, _wikiUrls.isEmpty ? null : _wikiUrls.join('\n'));
 
-    setState(() => _loading = false);
+    if (note != null && _attachments.isNotEmpty) {
+      for (final a in _attachments) {
+        try {
+          final form = FormData.fromMap({
+            'file': MultipartFile.fromBytes(a.bytes, filename: a.name),
+          });
+          await ApiClient.dio
+              .post('/api/notes/${note.id}/attachments', data: form);
+        } catch (_) {}
+      }
+    }
+
     if (!mounted) return;
+    setState(() => _loading = false);
     Navigator.pop(context);
 
-    if (note != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Note added to project')),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to add note')),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(note != null ? 'Note added to project' : 'Failed to add note')),
+    );
+  }
+
+  @override
+  void dispose() {
+    _stt.stop();
+    _notesCtrl.dispose();
+    _wikiCtrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(SeraTokens.rPill),
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const Gap(16),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: SeraTokens.primaryLight,
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.note_add_rounded,
+                  color: SeraTokens.primary, size: 20),
+            ),
+            const Gap(10),
+            const Text('Add Meeting Notes',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+          ]),
+          const Gap(16),
+          Stack(children: [
+            TextField(
+              controller: _notesCtrl,
+              maxLines: 7,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Paste or type your raw meeting notes here…\nOr use the mic to dictate.',
+                alignLabelWithHint: true,
+                contentPadding: EdgeInsets.fromLTRB(14, 14, 50, 14),
               ),
             ),
-            const Gap(18),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: SeraTokens.primaryLight,
-                    borderRadius: BorderRadius.circular(SeraTokens.rMd),
-                  ),
-                  child: const Icon(Icons.note_add_rounded,
-                      color: SeraTokens.primary, size: 20),
-                ),
-                const Gap(12),
-                const Text(
-                  'Add Meeting Notes',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: SeraTokens.fg1,
-                  ),
-                ),
-              ],
-            ),
-            const Gap(20),
-            Stack(children: [
-              TextFormField(
-                controller: _notesCtrl,
-                maxLines: 5,
-                textCapitalization: TextCapitalization.sentences,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Meeting Notes',
-                  hintText:
-                      'Paste or type your meeting notes, requirements, decisions…',
-                  alignLabelWithHint: true,
-                  contentPadding: EdgeInsets.fromLTRB(14, 14, 50, 14),
-                ),
-              ),
-              Positioned(
-                right: 4,
-                top: 4,
-                child: IconButton(
-                  tooltip: 'Paste from clipboard',
+            Positioned(
+              right: 4, top: 4,
+              child: Column(children: [
+                IconButton(
+                  tooltip: 'Paste',
                   icon: const Icon(Icons.content_paste_rounded, size: 20),
                   onPressed: () async {
-                    final data =
-                        await Clipboard.getData(Clipboard.kTextPlain);
+                    final data = await Clipboard.getData(Clipboard.kTextPlain);
                     if (data?.text != null) {
                       _notesCtrl.text = data!.text!.trim();
                       _notesCtrl.selection = TextSelection.fromPosition(
@@ -1089,36 +1203,92 @@ class _ProjectNoteSheetState extends State<_ProjectNoteSheet> {
                     }
                   },
                 ),
+                if (_sttAvailable)
+                  IconButton(
+                    tooltip: _listening ? 'Stop' : 'Dictate',
+                    icon: Icon(
+                      _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                      size: 20,
+                      color: _listening ? Colors.red : null,
+                    ),
+                    onPressed: _toggleListening,
+                  ),
+              ]),
+            ),
+          ]),
+          if (_listening) ...[
+            const Gap(6),
+            Row(children: [
+              const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              const Gap(8),
+              Expanded(
+                child: Text(
+                  _partialText.isNotEmpty ? _partialText : 'Listening…',
+                  style: const TextStyle(fontSize: 12, color: SeraTokens.fg3),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                ),
               ),
             ]),
-            const Gap(14),
-            TextFormField(
-              controller: _wikiCtrl,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Wiki / Reference URL (optional)',
-                hintText: 'https://',
-                prefixIcon: Icon(Icons.link_rounded, size: 20),
-              ),
+          ],
+          const Gap(10),
+          Row(children: [
+            OutlinedButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(Icons.image_rounded, size: 16),
+              label: const Text('Image'),
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 13)),
             ),
-            const Gap(22),
-            SizedBox(
-              height: 50,
-              child: FilledButton(
-                onPressed: _loading ? null : _submit,
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text('Save Notes'),
-              ),
+            const Gap(8),
+            OutlinedButton.icon(
+              onPressed: _pickFile,
+              icon: const Icon(Icons.attach_file_rounded, size: 16),
+              label: const Text('File'),
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 13)),
+            ),
+          ]),
+          if (_attachments.isNotEmpty) ...[
+            const Gap(8),
+            Wrap(
+              spacing: 6, runSpacing: 4,
+              children: _attachments.map((a) => Chip(
+                avatar: Icon(
+                  a.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                  size: 14),
+                label: Text(a.name,
+                    style: const TextStyle(fontSize: 11),
+                    overflow: TextOverflow.ellipsis),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                deleteIcon: const Icon(Icons.close, size: 14),
+                onDeleted: () => setState(() => _attachments.remove(a)),
+              )).toList(),
             ),
           ],
-        ),
+          const Gap(10),
+          WikiUrlInput(
+            controller: _wikiCtrl,
+            urls: _wikiUrls,
+            onAdd: _addWikiUrl,
+            onRemove: (url) => setState(() => _wikiUrls.remove(url)),
+          ),
+          const Gap(16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _loading ? null : _submit,
+              icon: _loading
+                  ? const SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(_loading ? 'Saving…' : 'Save Notes'),
+            ),
+          ),
+        ],
       ),
     );
   }
