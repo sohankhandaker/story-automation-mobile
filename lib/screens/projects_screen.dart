@@ -171,8 +171,7 @@ class ProjectsTab extends ConsumerWidget {
       data: (projects) => RefreshIndicator(
         onRefresh: () => ref.read(projectsProvider.notifier).fetch(),
         child: projects.isEmpty
-            ? _ProjectsEmptyState(
-                onAdd: () => _showNewProjectSheet(context, ref))
+            ? const _ProjectsEmptyState()
             : ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -183,15 +182,6 @@ class ProjectsTab extends ConsumerWidget {
       ),
     );
   }
-}
-
-void _showNewProjectSheet(BuildContext context, WidgetRef ref) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => const NewProjectSheet(),
-  );
 }
 
 // ── Project card ──────────────────────────────────────────────────────────────
@@ -1047,8 +1037,7 @@ class _ProjectNoteSheetState extends State<_ProjectNoteSheet> {
 // ── Empty states ──────────────────────────────────────────────────────────────
 
 class _ProjectsEmptyState extends StatelessWidget {
-  final VoidCallback onAdd;
-  const _ProjectsEmptyState({required this.onAdd});
+  const _ProjectsEmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -1079,19 +1068,13 @@ class _ProjectsEmptyState extends StatelessWidget {
             ),
             const Gap(8),
             const Text(
-              'Create your first project to start\nthe BRD → PRD workflow.',
+              'Tap + New Project to get started.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Color(0xFF6B7A8D),
                 fontSize: 13.5,
                 height: 1.5,
               ),
-            ),
-            const Gap(24),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('New Project'),
             ),
           ],
         ),

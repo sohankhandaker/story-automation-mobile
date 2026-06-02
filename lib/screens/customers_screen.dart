@@ -130,9 +130,7 @@ class CustomersTab extends ConsumerWidget {
       data: (customers) => RefreshIndicator(
         onRefresh: () => ref.read(customersProvider.notifier).fetch(),
         child: customers.isEmpty
-            ? _EmptyState(
-                onAdd: () => _showSheet(context, ref, null),
-              )
+            ? const _EmptyState()
             : ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -518,8 +516,7 @@ class _CustomerFormSheetState extends ConsumerState<CustomerFormSheet> {
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
-  final VoidCallback onAdd;
-  const _EmptyState({required this.onAdd});
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -550,21 +547,13 @@ class _EmptyState extends StatelessWidget {
             ),
             const Gap(8),
             const Text(
-              'Add your clients here so you can\nlink them to projects and enrich your BRDs.',
+              'Tap + New Customer to add your first client.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Color(0xFF6B7A8D),
                 fontSize: 13.5,
                 height: 1.5,
               ),
-            ),
-            const Gap(24),
-            FilledButton.icon(
-              onPressed: onAdd,
-              style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5)),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('New Customer'),
             ),
           ],
         ),
