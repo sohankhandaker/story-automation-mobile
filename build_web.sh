@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-FLUTTER_VERSION="3.24.5"
+FLUTTER_VERSION="${FLUTTER_VERSION:-3.24.5}"
 FLUTTER_TAR="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 FLUTTER_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/${FLUTTER_TAR}"
 
