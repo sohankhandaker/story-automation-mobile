@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sera-fe
+    runtime: static
+    branch: main
+    buildCommand: bash build_web.sh
+    staticPublishPath: build/web
+    pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
