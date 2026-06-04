@@ -23,6 +23,7 @@ class User {
   final String name;
   final String email;
   final String? githubUsername;
+  final String? avatarUrl;
   final List<ReviewerItem> reviewerList;
   final String? ghToken;
   final String? ghOwner;
@@ -34,6 +35,7 @@ class User {
     required this.name,
     required this.email,
     this.githubUsername,
+    this.avatarUrl,
     required this.reviewerList,
     this.ghToken,
     this.ghOwner,
@@ -46,6 +48,7 @@ class User {
         name: j['name'] as String,
         email: j['email'] as String,
         githubUsername: j['github_username'] as String?,
+        avatarUrl: j['avatar_url'] as String?,
         reviewerList: (j['reviewer_list'] as List<dynamic>? ?? [])
             .map((e) => ReviewerItem.fromJson(e as Map<String, dynamic>))
             .toList(),

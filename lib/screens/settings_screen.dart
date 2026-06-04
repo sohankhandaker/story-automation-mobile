@@ -194,27 +194,19 @@ class _SettingsTabState extends ConsumerState<SettingsTab> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [kPrimary, kPrimaryDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                if (user?.avatarUrl != null)
+                  ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    user?.name.substring(0, 1).toUpperCase() ?? '?',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 22,
+                    child: Image.network(
+                      user!.avatarUrl!,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _AvatarInitials(user),
                     ),
-                  ),
-                ),
+                  )
+                else
+                  _AvatarInitials(user),
                 const Gap(16),
                 Expanded(
                   child: Column(
@@ -615,6 +607,36 @@ class _SectionCard extends StatelessWidget {
           Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.5)),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _AvatarInitials extends StatelessWidget {
+  final User? user;
+  const _AvatarInitials(this.user);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [kPrimary, kPrimaryDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        user?.name.substring(0, 1).toUpperCase() ?? '?',
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 22,
+        ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
+import '../providers/auth_provider.dart' show authProvider;
 import '../theme/sera_tokens.dart';
 import 'projects_screen.dart' show projectsProvider;
 import 'customers_screen.dart' show Customer, CustomersTab, CustomerFormSheet, customersProvider;
@@ -107,6 +108,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   PreferredSizeWidget _buildAppBar(ColorScheme cs) {
+    final user = ref.watch(authProvider).user;
     if (_selectedIndex == 0) {
       return AppBar(
         title: Row(
@@ -137,6 +139,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ref.read(customersProvider.notifier).fetch();
             },
           ),
+          if (user?.avatarUrl != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundImage: NetworkImage(user!.avatarUrl!),
+                backgroundColor: SeraTokens.primaryLight,
+              ),
+            ),
         ],
       );
     }
