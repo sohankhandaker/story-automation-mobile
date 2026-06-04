@@ -55,7 +55,8 @@ class _CrDetailScreenState extends ConsumerState<CrDetailScreen> {
 
   bool get _isClosed => _note.status == 'Closed';
   bool get _isWorking => _note.brdGenerationPhase != null || _note.status == 'In Progress';
-  bool get _canEdit => !_isClosed && !_isWorking;
+  // Editable as long as not Closed — generation in progress doesn't block editing
+  bool get _canEdit => !_isClosed;
 
   Color get _statusColor {
     switch (_note.status) {

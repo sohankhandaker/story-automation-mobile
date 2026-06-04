@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api.dart';
 import '../theme/sera_tokens.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'notes_screen.dart' show MeetingNote, NoteCard;
 import 'customers_screen.dart' show Customer, customersProvider, CustomerFormSheet;
 import 'shared_widgets.dart' show WikiUrlInput;
@@ -841,7 +842,7 @@ class ProjectDetailScreen extends ConsumerWidget {
                     sliver: SliverList.separated(
                       itemCount: crNotes.length,
                       separatorBuilder: (_, __) => const Gap(10),
-                      itemBuilder: (_, i) => _CrCard(note: crNotes[i]),
+                      itemBuilder: (_, i) => _CrCard(note: crNotes[i], projectId: project.id),
                     ),
                   ),
               ] else
@@ -1722,119 +1723,315 @@ class _ApprovedPrdCard extends StatelessWidget {
 
 // ── Change Request card ───────────────────────────────────────────────────────
 
-class _CrCard extends StatelessWidget {
+class _CrCard extends ConsumerStatefulWidget {
   final MeetingNote note;
-  const _CrCard({required this.note});
+  final String projectId;
+  const _CrCard({required this.note, required this.projectId});
+
+  @override
+  ConsumerState<_CrCard> createState() => _CrCardState();
+}
+
+class _CrCardState extends ConsumerState<_CrCard> {
+  late MeetingNote _note;
+  bool _enhancing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _note = widget.note;
+  }
+
+  @override
+  void didUpdateWidget(_CrCard old) {
+    super.didUpdateWidget(old);
+    if (old.note.id == widget.note.id) _note = widget.note;
+  }
+
+  bool get _isClosed => _note.status == 'Closed';
+  bool get _isGenerating => _note.brdGenerationPhase != null;
 
   Color get _statusColor {
-    switch (note.status) {
+    switch (_note.status) {
       case 'Closed': return SeraTokens.statusApproved;
       case 'In Review': return SeraTokens.statusInReview;
       default: return SeraTokens.statusInProgressWarm;
     }
   }
 
-  IconData get _statusIcon {
-    switch (note.status) {
-      case 'Closed': return Icons.check_circle_rounded;
-      case 'In Review': return Icons.rate_review_rounded;
-      default: return Icons.hourglass_top_rounded;
+  // ── Enhance against PRD ──────────────────────────────────────────────────
+  Future<void> _enhanceAgainstPrd() async {
+    setState(() => _enhancing = true);
+    try {
+      // 1. Enhance raw notes against the approved PRD
+      final enhResp = await ApiClient.dio.post(
+        '/api/projects/${widget.projectId}/enhance-against-prd',
+        data: {'raw_text': _note.rawNotes},
+      );
+      final enhanced = enhResp.data['enhanced_text'] as String;
+
+      // 2. Save enhanced notes back to the CR
+      await ApiClient.dio.patch('/api/notes/${_note.id}', data: {'content': enhanced});
+
+      // 3. Trigger summary regeneration
+      final regenResp = await ApiClient.dio.post('/api/notes/${_note.id}/regenerate-cr-summary');
+      if (mounted) {
+        setState(() => _note = MeetingNote.fromJson(regenResp.data as Map<String, dynamic>));
+        ref.read(projectNotesProvider(widget.projectId).notifier).fetch();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enhanced — regenerating summary…')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enhancement failed — try again'),
+              backgroundColor: Colors.red),
+        );
+      }
     }
+    if (mounted) setState(() => _enhancing = false);
+  }
+
+  // ── See Summary sheet ────────────────────────────────────────────────────
+  void _showSummary() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CrSummarySheet(note: _note),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = note.createdAt.toLocal().toString().substring(0, 10);
-    final hasSummary = note.brdDraft != null;
-    final isClosed = note.status == 'Closed';
+    final dateStr = _note.createdAt.toLocal().toString().substring(0, 10);
+    final hasSummary = _note.brdDraft != null;
 
     return Card(
       margin: EdgeInsets.zero,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => CrDetailScreen(note: note)),
+          MaterialPageRoute(builder: (_) => CrDetailScreen(note: _note)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+              // ── Header row ──────────────────────────────────────────
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _isClosed ? Icons.check_circle_rounded
+                        : _isGenerating ? Icons.hourglass_top_rounded
+                        : Icons.change_circle_outlined,
+                    color: _statusColor, size: 16,
+                  ),
                 ),
-                child: Icon(_statusIcon, color: _statusColor, size: 20),
-              ),
-              const Gap(12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Expanded(
-                        child: Text(note.title ?? 'Change Request',
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                      const Gap(8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: _statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(note.status,
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                                color: _statusColor)),
-                      ),
-                    ]),
-                    const Gap(4),
-                    if (hasSummary)
-                      Text(
-                        note.brdDraft!.replaceAll(RegExp(r'#+\s'), '').trim(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: SeraTokens.fg3),
-                      )
-                    else
-                      Text(
-                        note.brdGenerationPhase != null
-                            ? 'Generating summary…'
-                            : note.rawNotes,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: note.brdGenerationPhase != null
-                              ? SeraTokens.statusInProgressWarm
-                              : SeraTokens.fg3,
-                          fontStyle: note.brdGenerationPhase != null
-                              ? FontStyle.italic : FontStyle.normal,
-                        ),
-                      ),
-                    const Gap(6),
-                    Row(children: [
-                      const Icon(Icons.calendar_today_rounded, size: 11, color: SeraTokens.muted),
-                      const Gap(4),
-                      Text(dateStr, style: const TextStyle(fontSize: 11, color: SeraTokens.muted)),
-                      if (isClosed && note.plannerDocUrl != null) ...[
-                        const Gap(10),
-                        const Icon(Icons.attach_file_rounded, size: 11, color: SeraTokens.statusApproved),
-                        const Gap(2),
-                        const Text('Planner doc ready',
-                            style: TextStyle(fontSize: 11, color: SeraTokens.statusApproved,
-                                fontWeight: FontWeight.w600)),
-                      ],
-                    ]),
-                  ],
+                const Gap(10),
+                Expanded(
+                  child: Text(_note.title ?? 'Change Request',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: SeraTokens.muted, size: 18),
+                const Gap(8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(_note.status,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                          color: _statusColor)),
+                ),
+              ]),
+              const Gap(8),
+
+              // ── Summary preview ─────────────────────────────────────
+              if (_isGenerating)
+                Row(children: [
+                  SizedBox(width: 12, height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2,
+                          color: SeraTokens.statusInProgressWarm)),
+                  const Gap(8),
+                  const Text('Generating summary…',
+                      style: TextStyle(fontSize: 12, color: SeraTokens.statusInProgressWarm,
+                          fontStyle: FontStyle.italic)),
+                ])
+              else if (hasSummary)
+                Text(
+                  _note.brdDraft!.replaceAll(RegExp(r'#+\s*'), '').trim(),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: SeraTokens.fg3, height: 1.4),
+                )
+              else
+                Text(_note.rawNotes,
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: SeraTokens.fg3)),
+
+              const Gap(8),
+
+              // ── Meta row ────────────────────────────────────────────
+              Row(children: [
+                const Icon(Icons.calendar_today_rounded, size: 11, color: SeraTokens.muted),
+                const Gap(4),
+                Text(dateStr, style: const TextStyle(fontSize: 11, color: SeraTokens.muted)),
+                if (_isClosed && _note.plannerDocUrl != null) ...[
+                  const Gap(10),
+                  const Icon(Icons.attach_file_rounded, size: 11, color: SeraTokens.statusApproved),
+                  const Gap(3),
+                  const Text('Planner doc ready',
+                      style: TextStyle(fontSize: 11, color: SeraTokens.statusApproved,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ]),
+
+              // ── Action buttons (not Closed) ─────────────────────────
+              const Gap(10),
+              const Divider(height: 1),
+              const Gap(8),
+              Row(children: [
+                // See Summary
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _showSummary,
+                    icon: const Icon(Icons.summarize_rounded, size: 14),
+                    label: const Text('See Summary'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const Gap(8),
+                // Enhance against PRD (hidden when Closed)
+                if (!_isClosed)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _enhancing ? null : _enhanceAgainstPrd,
+                      icon: _enhancing
+                          ? const SizedBox(width: 12, height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.auto_fix_high_rounded, size: 14),
+                      label: Text(_enhancing ? 'Enhancing…' : 'Enhance against PRD'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: SeraTokens.statusInProgressWarm,
+                        side: const BorderSide(color: SeraTokens.statusInProgressWarm),
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+              ]),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── CR Summary bottom sheet ───────────────────────────────────────────────────
+
+class _CrSummarySheet extends StatelessWidget {
+  final MeetingNote note;
+  const _CrSummarySheet({required this.note});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasSummary = note.brdDraft != null && note.brdDraft!.isNotEmpty;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, controller) => Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            const Gap(12),
+            Center(
+              child: Container(width: 36, height: 4,
+                  decoration: BoxDecoration(color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(2))),
+            ),
+            const Gap(12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(children: [
+                const Icon(Icons.summarize_rounded, size: 18, color: SeraTokens.primary),
+                const Gap(10),
+                Expanded(
+                  child: Text(note.title ?? 'Change Request',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: SeraTokens.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(note.status,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                          color: SeraTokens.primary)),
+                ),
+              ]),
+            ),
+            const Gap(8),
+            const Divider(height: 1),
+            Expanded(
+              child: hasSummary
+                  ? ListView(
+                      controller: controller,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                      children: [
+                        MarkdownBody(
+                          data: note.brdDraft!,
+                          styleSheet: MarkdownStyleSheet(
+                            p: const TextStyle(fontSize: 13, height: 1.6,
+                                color: SeraTokens.fg1),
+                            h1: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            h2: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                            h3: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(note.brdGenerationPhase != null
+                              ? Icons.hourglass_top_rounded
+                              : Icons.pending_rounded,
+                              size: 40, color: SeraTokens.muted),
+                          const Gap(12),
+                          Text(
+                            note.brdGenerationPhase != null
+                                ? 'Summary is being generated…'
+                                : 'No summary yet. Use "Enhance against PRD" to generate one.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 13, color: SeraTokens.fg3),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
         ),
       ),
     );

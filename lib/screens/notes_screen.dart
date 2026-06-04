@@ -79,6 +79,7 @@ class ReviewerStatus {
 
 class MeetingNote {
   final String id;
+  final String? projectId;
   final String? title;
   final String noteType;
   final String rawNotes;
@@ -106,6 +107,7 @@ class MeetingNote {
 
   MeetingNote.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
+        projectId = j['project_id'] as String?,
         title = j['title'] as String?,
         noteType = (j['note_type'] as String?) ?? 'note',
         rawNotes = j['raw_notes'] as String,
