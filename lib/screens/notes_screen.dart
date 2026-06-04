@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -2147,26 +2144,6 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
     if (updated != null && mounted) setState(() => _prd = updated);
   }
 
-  Future<void> _downloadMd(String content, String filename) async {
-    try {
-      final dir = await getTemporaryDirectory();
-      final safe = filename.replaceAll(RegExp(r'[^\w\s\-]'), '_');
-      final file = File('${dir.path}/$safe.md');
-      await file.writeAsString(content);
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'text/markdown', name: '$safe.md')],
-          subject: safe,
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed: $e')),
-        );
-      }
-    }
-  }
 
   @override
   void dispose() {
@@ -2244,29 +2221,20 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
                     const SnackBar(content: Text('BRD copied to clipboard')),
                   );
                 }
-                if (v == 'download') {
-                  _downloadMd(_note.brdDraft ?? '', _note.title ?? 'BRD');
-                }
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'update', child: ListTile(leading: Icon(Icons.edit_note_rounded), title: Text('Request Update'), contentPadding: EdgeInsets.zero, dense: true)),
                 PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_rounded), title: Text('Copy BRD'), contentPadding: EdgeInsets.zero, dense: true)),
-                PopupMenuItem(value: 'download', child: ListTile(leading: Icon(Icons.download_rounded), title: Text('Download .md'), contentPadding: EdgeInsets.zero, dense: true)),
               ],
             ),
           if (_note.status == 'Approved') ...[
-            if (_note.githubFileUrl != null)
+            if (_note.githubIssueUrl != null)
               IconButton(
-                icon: const Icon(Icons.cloud_download_rounded, size: 20),
-                tooltip: 'View/Download from GitHub',
-                onPressed: () => launchUrl(Uri.parse(_note.githubFileUrl!),
+                icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                tooltip: 'Open BRD ticket',
+                onPressed: () => launchUrl(Uri.parse(_note.githubIssueUrl!),
                     mode: LaunchMode.externalApplication),
               ),
-            IconButton(
-              icon: const Icon(Icons.download_rounded, size: 20),
-              tooltip: 'Download BRD as .md',
-              onPressed: () => _downloadMd(_note.brdDraft ?? '', _note.title ?? 'BRD'),
-            ),
             IconButton(
               icon: const Icon(Icons.copy_rounded, size: 20),
               tooltip: 'Copy BRD',
@@ -2311,21 +2279,13 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
               onPressed: _sendToPlanner,
             ),
           if (_prd!.prdDraft != null) ...[
-            if (_prd!.githubFileUrl != null)
+            if (_prd!.githubIssueUrl != null)
               IconButton(
-                icon: const Icon(Icons.cloud_download_rounded, size: 20),
-                tooltip: 'View/Download from GitHub',
-                onPressed: () => launchUrl(Uri.parse(_prd!.githubFileUrl!),
+                icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                tooltip: 'Open PRD ticket',
+                onPressed: () => launchUrl(Uri.parse(_prd!.githubIssueUrl!),
                     mode: LaunchMode.externalApplication),
               ),
-            IconButton(
-              icon: const Icon(Icons.download_rounded, size: 20),
-              tooltip: 'Download PRD as .md',
-              onPressed: () => _downloadMd(
-                _prd!.prdDraft!,
-                _note.title != null ? '${_note.title}_PRD' : 'PRD',
-              ),
-            ),
             IconButton(
               icon: const Icon(Icons.copy_rounded, size: 20),
               tooltip: 'Copy PRD',
