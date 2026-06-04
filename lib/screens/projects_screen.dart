@@ -14,6 +14,7 @@ import '../theme/sera_tokens.dart';
 import 'notes_screen.dart' show MeetingNote, NoteCard;
 import 'customers_screen.dart' show Customer, customersProvider, CustomerFormSheet;
 import 'shared_widgets.dart' show WikiUrlInput;
+import 'cr_detail_screen.dart' show CrDetailScreen;
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -708,78 +709,143 @@ class ProjectDetailScreen extends ConsumerWidget {
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(child: _ProjectInfoCard(project: project)),
-          const SliverToBoxAdapter(child: Gap(4)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.description_rounded,
-                      size: 15, color: SeraTokens.fg3),
-                  const Gap(7),
-                  const Text(
-                    'Meeting Notes & BRDs',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: SeraTokens.fg1,
-                    ),
-                  ),
-                  const Spacer(),
-                  notesAsync.when(
-                    data: (notes) => Text('${notes.length}',
-                        style: const TextStyle(
-                            fontSize: 12, color: SeraTokens.muted)),
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                  ),
-                ],
+      body: notesAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 40, color: Colors.red),
+              const Gap(12),
+              Text('$e', textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13)),
+              const Gap(12),
+              FilledButton(
+                onPressed: () => ref.read(projectNotesProvider(project.id).notifier).fetch(),
+                child: const Text('Retry'),
               ),
-            ),
+            ],
           ),
-          notesAsync.when(
-            loading: () => const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (e, _) => SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 40, color: Colors.red),
-                    const Gap(12),
-                    Text('$e',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 13)),
-                    const Gap(12),
-                    FilledButton(
-                      onPressed: () => ref
-                          .read(projectNotesProvider(project.id).notifier)
-                          .fetch(),
-                      child: const Text('Retry'),
-                    ),
-                  ],
+        ),
+        data: (notes) {
+          final regularNotes = notes.where((n) => n.noteType != 'change_request').toList();
+          final crNotes = notes.where((n) => n.noteType == 'change_request').toList();
+          final approvedPrd = regularNotes.where(
+            (n) => n.prdStatus == 'Sent to Planner').toList();
+
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: _ProjectInfoCard(project: project)),
+              const SliverToBoxAdapter(child: Gap(4)),
+
+              // ── Meeting Notes & BRDs ──────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(children: [
+                    const Icon(Icons.description_rounded, size: 15, color: SeraTokens.fg3),
+                    const Gap(7),
+                    const Text('Meeting Notes & BRDs',
+                        style: TextStyle(fontWeight: FontWeight.w700,
+                            fontSize: 13, color: SeraTokens.fg1)),
+                    const Spacer(),
+                    Text('${regularNotes.length}',
+                        style: const TextStyle(fontSize: 12, color: SeraTokens.muted)),
+                  ]),
                 ),
               ),
-            ),
-            data: (notes) => notes.isEmpty
-                ? const SliverFillRemaining(
+              if (regularNotes.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: _NotesEmptyState(),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                    sliver: SliverList.separated(
-                      itemCount: notes.length,
-                      separatorBuilder: (_, __) => const Gap(10),
-                      itemBuilder: (_, i) => NoteCard(note: notes[i]),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  sliver: SliverList.separated(
+                    itemCount: regularNotes.length,
+                    separatorBuilder: (_, __) => const Gap(10),
+                    itemBuilder: (_, i) => NoteCard(note: regularNotes[i]),
+                  ),
+                ),
+
+              // ── PRD Management (only when hasSentPrd) ─────────────
+              if (project.hasSentPrd) ...[
+                const SliverToBoxAdapter(child: Gap(8)),
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    decoration: BoxDecoration(
+                      color: SeraTokens.statusApproved.withValues(alpha: 0.07),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                      border: Border.all(color: SeraTokens.statusApproved.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.verified_rounded, size: 15, color: SeraTokens.statusApproved),
+                      const Gap(7),
+                      const Text('PRD Management',
+                          style: TextStyle(fontWeight: FontWeight.w700,
+                              fontSize: 13, color: SeraTokens.statusApproved)),
+                    ]),
+                  ),
+                ),
+
+                // Approved PRD cards
+                if (approvedPrd.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (_, i) => _ApprovedPrdCard(note: approvedPrd[i]),
+                        childCount: approvedPrd.length,
+                      ),
                     ),
                   ),
-          ),
-        ],
+
+                // Change Requests header
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Row(children: [
+                      const Icon(Icons.change_circle_outlined,
+                          size: 15, color: SeraTokens.statusInProgressWarm),
+                      const Gap(7),
+                      const Text('Change Requests',
+                          style: TextStyle(fontWeight: FontWeight.w700,
+                              fontSize: 13, color: SeraTokens.fg1)),
+                      const Spacer(),
+                      Text('${crNotes.length}',
+                          style: const TextStyle(fontSize: 12, color: SeraTokens.muted)),
+                    ]),
+                  ),
+                ),
+
+                if (crNotes.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Text('No change requests yet. Tap "Change Request" to create one.',
+                          style: TextStyle(fontSize: 13, color: SeraTokens.muted)),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                    sliver: SliverList.separated(
+                      itemCount: crNotes.length,
+                      separatorBuilder: (_, __) => const Gap(10),
+                      itemBuilder: (_, i) => _CrCard(note: crNotes[i]),
+                    ),
+                  ),
+              ] else
+                const SliverToBoxAdapter(
+                    child: SizedBox(height: 100)),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1565,6 +1631,207 @@ class _CustomerPickerSheet extends StatelessWidget {
             ),
           const Gap(12),
         ],
+      ),
+    );
+  }
+}
+
+// ── Approved PRD card ─────────────────────────────────────────────────────────
+
+class _ApprovedPrdCard extends StatelessWidget {
+  final MeetingNote note;
+  const _ApprovedPrdCard({required this.note});
+
+  @override
+  Widget build(BuildContext context) {
+    final dateStr = note.createdAt.toLocal().toString().substring(0, 10);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+      decoration: BoxDecoration(
+        color: SeraTokens.statusApproved.withValues(alpha: 0.05),
+        border: Border.all(color: SeraTokens.statusApproved.withValues(alpha: 0.25)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.verified_rounded, size: 16, color: SeraTokens.statusApproved),
+              const Gap(8),
+              Expanded(
+                child: Text(
+                  note.title ?? 'Approved PRD',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14, color: SeraTokens.fg1),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: SeraTokens.statusApproved.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'v${note.prdVersionNumber ?? 1}',
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700,
+                      color: SeraTokens.statusApproved),
+                ),
+              ),
+            ]),
+            const Gap(8),
+            Row(children: [
+              const Icon(Icons.calendar_today_rounded, size: 12, color: SeraTokens.muted),
+              const Gap(4),
+              Text('Approved $dateStr',
+                  style: const TextStyle(fontSize: 12, color: SeraTokens.muted)),
+            ]),
+            if (note.prdFileUrl != null || note.prdFileRawUrl != null) ...[
+              const Gap(10),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final url = note.prdFileUrl ?? note.prdFileRawUrl!;
+                  // Navigate to GitHub link — use url_launcher if available
+                  // ignore: use_build_context_synchronously
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('PRD: $url'), duration: const Duration(seconds: 4)),
+                  );
+                },
+                icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                label: const Text('View PRD'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: SeraTokens.statusApproved,
+                  side: const BorderSide(color: SeraTokens.statusApproved),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Change Request card ───────────────────────────────────────────────────────
+
+class _CrCard extends StatelessWidget {
+  final MeetingNote note;
+  const _CrCard({required this.note});
+
+  Color get _statusColor {
+    switch (note.status) {
+      case 'Closed': return SeraTokens.statusApproved;
+      case 'In Review': return SeraTokens.statusInReview;
+      default: return SeraTokens.statusInProgressWarm;
+    }
+  }
+
+  IconData get _statusIcon {
+    switch (note.status) {
+      case 'Closed': return Icons.check_circle_rounded;
+      case 'In Review': return Icons.rate_review_rounded;
+      default: return Icons.hourglass_top_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateStr = note.createdAt.toLocal().toString().substring(0, 10);
+    final hasSummary = note.brdDraft != null;
+    final isClosed = note.status == 'Closed';
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => CrDetailScreen(note: note)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(_statusIcon, color: _statusColor, size: 20),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(note.title ?? 'Change Request',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                      const Gap(8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(note.status,
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                                color: _statusColor)),
+                      ),
+                    ]),
+                    const Gap(4),
+                    if (hasSummary)
+                      Text(
+                        note.brdDraft!.replaceAll(RegExp(r'#+\s'), '').trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: SeraTokens.fg3),
+                      )
+                    else
+                      Text(
+                        note.brdGenerationPhase != null
+                            ? 'Generating summary…'
+                            : note.rawNotes,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: note.brdGenerationPhase != null
+                              ? SeraTokens.statusInProgressWarm
+                              : SeraTokens.fg3,
+                          fontStyle: note.brdGenerationPhase != null
+                              ? FontStyle.italic : FontStyle.normal,
+                        ),
+                      ),
+                    const Gap(6),
+                    Row(children: [
+                      const Icon(Icons.calendar_today_rounded, size: 11, color: SeraTokens.muted),
+                      const Gap(4),
+                      Text(dateStr, style: const TextStyle(fontSize: 11, color: SeraTokens.muted)),
+                      if (isClosed && note.plannerDocUrl != null) ...[
+                        const Gap(10),
+                        const Icon(Icons.attach_file_rounded, size: 11, color: SeraTokens.statusApproved),
+                        const Gap(2),
+                        const Text('Planner doc ready',
+                            style: TextStyle(fontSize: 11, color: SeraTokens.statusApproved,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ]),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: SeraTokens.muted, size: 18),
+            ],
+          ),
+        ),
       ),
     );
   }

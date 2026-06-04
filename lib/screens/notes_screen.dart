@@ -94,6 +94,14 @@ class MeetingNote {
   final List<ReviewerStatus> reviewers;
   final String? githubFileUrl;
   final String? githubFileRawUrl;
+  // Change Request planner document
+  final String? plannerDocContent;
+  final String? plannerDocUrl;
+  // PRD info — set in project notes list responses
+  final String? prdStatus;
+  final int? prdVersionNumber;
+  final String? prdFileUrl;
+  final String? prdFileRawUrl;
   final DateTime createdAt;
 
   MeetingNote.fromJson(Map<String, dynamic> j)
@@ -115,6 +123,12 @@ class MeetingNote {
             .toList(),
         githubFileUrl = j['github_file_url'] as String?,
         githubFileRawUrl = j['github_file_raw_url'] as String?,
+        plannerDocContent = j['planner_doc_content'] as String?,
+        plannerDocUrl = j['planner_doc_url'] as String?,
+        prdStatus = j['prd_status'] as String?,
+        prdVersionNumber = j['prd_version_number'] as int?,
+        prdFileUrl = j['prd_file_url'] as String?,
+        prdFileRawUrl = j['prd_file_raw_url'] as String?,
         createdAt = DateTime.parse(j['created_at'] as String);
 }
 
