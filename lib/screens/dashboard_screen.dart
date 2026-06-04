@@ -4,11 +4,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import '../providers/auth_provider.dart' show authProvider;
 import '../theme/sera_tokens.dart';
-import 'projects_screen.dart' show projectsProvider;
+import 'package:url_launcher/url_launcher.dart';
+import 'projects_screen.dart' show projectsProvider, Project, ProjectDetailScreen;
 import 'customers_screen.dart' show Customer, CustomersTab, CustomerFormSheet, customersProvider;
 import 'customer_detail_screen.dart' show CustomerDetailScreen;
 import 'settings_screen.dart' show SettingsTab;
-import 'notes_screen.dart' show notesProvider, MeetingNote, NoteDetailScreen;
 
 // ── Dashboard shell ───────────────────────────────────────────────────────────
 
@@ -48,7 +48,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             onCustomerTap: (c) => _openCustomerDetail(context, c),
             onDeleted: () {
               ref.read(projectsProvider.notifier).fetch();
-              ref.read(notesProvider.notifier).fetchNotes();
             },
           ),
           const SettingsTab(),
@@ -65,8 +64,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               // Refresh all data when switching back to Dashboard
               if (i == 0) {
                 ref.read(projectsProvider.notifier).fetch();
-                ref.read(notesProvider.notifier).fetchNotes();
-                ref.read(customersProvider.notifier).fetch();
               }
             },
             destinations: const [
@@ -133,11 +130,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh',
-            onPressed: () {
-              ref.read(projectsProvider.notifier).fetch();
-              ref.read(notesProvider.notifier).fetchNotes();
-              ref.read(customersProvider.notifier).fetch();
-            },
+            onPressed: () => ref.read(projectsProvider.notifier).fetch(),
           ),
           if (user?.avatarUrl != null)
             Padding(
@@ -174,385 +167,276 @@ class _DashboardTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projectsAsync = ref.watch(projectsProvider);
-    final notesAsync = ref.watch(notesProvider);
-    final customersAsync = ref.watch(customersProvider);
-
-    final projects = projectsAsync.valueOrNull ?? [];
-    final notes = notesAsync.valueOrNull ?? [];
-    final customers = customersAsync.valueOrNull ?? [];
-
-    final loading = projectsAsync.isLoading && notesAsync.isLoading;
-    if (loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: SeraTokens.primary));
-    }
-
-    final actionNeeded = notes.where((n) => n.status == 'Pending Review').toList();
-    final inProgress = notes.where((n) => n.status == 'In Progress').toList();
 
     return RefreshIndicator(
       color: SeraTokens.primary,
-      onRefresh: () async {
-        await ref.read(projectsProvider.notifier).fetch();
-        await ref.read(notesProvider.notifier).fetchNotes();
-        await ref.read(customersProvider.notifier).fetch();
-      },
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-        children: [
-          const _WelcomeBanner(),
-          const Gap(20),
-          Row(
-            children: [
-              _StatCard(
-                icon: Icons.folder_rounded,
-                label: 'Projects',
-                count: projects.length,
-                color: SeraTokens.primary,
-              ),
-              const Gap(10),
-              _StatCard(
-                icon: Icons.business_rounded,
-                label: 'Customers',
-                count: customers.length,
-                color: SeraTokens.statusPendingReview,
-              ),
-              const Gap(10),
-              _StatCard(
-                icon: Icons.task_alt_rounded,
-                label: 'BRDs Done',
-                count: notes.where((n) => n.status == 'Approved').length,
-                color: SeraTokens.statusApproved,
-              ),
-            ],
-          ),
-          if (actionNeeded.isNotEmpty) ...[
-            const Gap(24),
-            const _SectionHeader(
-              title: 'Action Needed',
-              icon: Icons.notification_important_rounded,
-              color: SeraTokens.statusInfo,
+      onRefresh: () => ref.read(projectsProvider.notifier).fetch(),
+      child: projectsAsync.when(
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: SeraTokens.primary)),
+        error: (e, _) => Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.error_outline, size: 40, color: Colors.red),
+            const Gap(12),
+            Text('$e', textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: SeraTokens.fg3)),
+            const Gap(12),
+            FilledButton(
+              onPressed: () => ref.read(projectsProvider.notifier).fetch(),
+              child: const Text('Retry'),
             ),
-            const Gap(10),
-            ...actionNeeded.map((n) => _NoteActionCard(note: n)),
-          ],
-          if (inProgress.isNotEmpty) ...[
-            const Gap(24),
-            const _SectionHeader(
-              title: 'In Progress',
-              icon: Icons.autorenew_rounded,
-              color: SeraTokens.statusInProgressWarm,
-            ),
-            const Gap(10),
-            ...inProgress.map((n) => _NoteActionCard(note: n)),
-          ],
-          if (projects.isEmpty && notes.isEmpty) ...[
-            const Gap(40),
-            const _EmptyDashboard(),
-          ],
-        ],
-      ),
-    );
-  }
-}
+          ]),
+        ),
+        data: (all) {
+          // Newest first, cap at 20
+          final projects = [...all]
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          final latest = projects.take(20).toList();
 
-// ── Welcome banner ────────────────────────────────────────────────────────────
-
-class _WelcomeBanner extends StatelessWidget {
-  const _WelcomeBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final hour = DateTime.now().hour;
-    final greeting = hour < 12
-        ? 'Good morning'
-        : hour < 17
-            ? 'Good afternoon'
-            : 'Good evening';
-    final now = DateTime.now();
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    final dateStr = '${months[now.month - 1]} ${now.day}, ${now.year}';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
-      decoration: BoxDecoration(
-        gradient: SeraTokens.heroGradient,
-        borderRadius: BorderRadius.circular(SeraTokens.r3xl),
-        boxShadow: SeraTokens.bannerGlow,
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -20, top: -30,
-            child: Container(
-              width: 130, height: 130,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06), width: 1),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 10, bottom: -20,
-            child: Container(
-              width: 70, height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: SeraTokens.accent.withValues(alpha: 0.18), width: 1),
-              ),
-            ),
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Container(
-                        width: 4, height: 4,
-                        decoration: const BoxDecoration(
-                            color: SeraTokens.accent, shape: BoxShape.circle),
-                      ),
-                      const Gap(7),
-                      Text(dateStr,
-                          style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 11.5, letterSpacing: 0.3)),
-                    ]),
-                    const Gap(10),
-                    const Text('BRD → PRD pipeline overview',
-                        style: TextStyle(
-                            color: Colors.white, fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3, height: 1)),
-                    const Gap(6),
-                    Text(greeting,
-                        style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 13)),
-                  ],
+          if (latest.isEmpty) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 60, 16, 80),
+              children: [
+                Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 76, height: 76,
+                      decoration: BoxDecoration(
+                          color: SeraTokens.primaryLight,
+                          borderRadius: BorderRadius.circular(SeraTokens.rLogo)),
+                      child: const Icon(Icons.folder_open_rounded,
+                          size: 36, color: SeraTokens.primary),
+                    ),
+                    const Gap(18),
+                    const Text('No projects yet',
+                        style: TextStyle(fontWeight: FontWeight.w700,
+                            fontSize: 16, color: SeraTokens.fg1)),
+                    const Gap(8),
+                    const Text(
+                        'Go to Customers and create a project\nto start your BRD pipeline.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: SeraTokens.fg3,
+                            fontSize: 13, height: 1.5)),
+                  ]),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(SeraTokens.rXl),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                ),
-                child: const Icon(Icons.auto_awesome_rounded,
-                    color: Colors.white, size: 22),
-              ),
-            ],
-          ),
-        ],
+              ],
+            );
+          }
+
+          return ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
+            itemCount: latest.length + 1,
+            separatorBuilder: (_, __) => const Gap(10),
+            itemBuilder: (_, i) {
+              if (i == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(children: [
+                    const Text('Recent Projects',
+                        style: TextStyle(fontWeight: FontWeight.w700,
+                            fontSize: 15, color: SeraTokens.fg1)),
+                    const Spacer(),
+                    Text('${all.length} total',
+                        style: const TextStyle(fontSize: 12,
+                            color: SeraTokens.muted)),
+                  ]),
+                );
+              }
+              return _ProjectDashTile(project: latest[i - 1]);
+            },
+          );
+        },
       ),
     );
   }
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
+// ── Project dashboard tile ────────────────────────────────────────────────────
 
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final int count;
-  final Color color;
-
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.count,
-    required this.color,
-  });
+class _ProjectDashTile extends StatelessWidget {
+  final Project project;
+  const _ProjectDashTile({required this.project});
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
-        decoration: BoxDecoration(
-          color: SeraTokens.surfaceCard,
-          borderRadius: BorderRadius.circular(SeraTokens.rXl),
-          border: Border.all(color: color.withValues(alpha: 0.18)),
-          boxShadow: [
-            BoxShadow(
-                color: color.withValues(alpha: 0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 3)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(SeraTokens.rSm)),
-              child: Icon(icon, color: color, size: 16),
-            ),
-            const Gap(10),
-            Text('$count',
-                style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: SeraTokens.fg1,
-                    letterSpacing: -0.5,
-                    height: 1)),
-            const Gap(2),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 11,
-                    color: SeraTokens.muted,
-                    fontWeight: FontWeight.w600)),
-          ],
-        ),
+    final hasCr = project.changeRequestCount > 0;
+    final hasPrd = project.hasSentPrd;
+    final dateStr = _fmtDate(project.createdAt);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SeraTokens.rXl),
+        side: BorderSide(color: SeraTokens.border),
       ),
-    );
-  }
-}
-
-// ── Section header ────────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-
-  const _SectionHeader(
-      {required this.title, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(SeraTokens.rXs)),
-          child: Icon(icon, size: 14, color: color),
-        ),
-        const Gap(8),
-        Text(title,
-            style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: SeraTokens.fg1)),
-      ],
-    );
-  }
-}
-
-// ── Note action card ──────────────────────────────────────────────────────────
-
-class _NoteActionCard extends StatelessWidget {
-  final MeetingNote note;
-  const _NoteActionCard({required this.note});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = SeraTokens.statusColors[note.status] ?? SeraTokens.primary;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(SeraTokens.rLg),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => NoteDetailScreen(note: note)),
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: SeraTokens.surfaceCard,
-          borderRadius: BorderRadius.circular(SeraTokens.rLg),
-          border: Border.all(color: SeraTokens.border),
-          boxShadow: SeraTokens.cardShadow,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(SeraTokens.rXl),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ProjectDetailScreen(project: project)),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(SeraTokens.rSm)),
-                child: Icon(Icons.description_rounded, size: 17, color: color),
-              ),
-              const Gap(11),
-              Expanded(
-                child: Column(
+              // ── Row 1: name + status badge ──────────────────────────
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: SeraTokens.primaryLight,
+                    borderRadius: BorderRadius.circular(SeraTokens.rMd),
+                  ),
+                  child: const Icon(Icons.folder_rounded,
+                      color: SeraTokens.primary, size: 18),
+                ),
+                const Gap(10),
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(note.title ?? 'Untitled Note',
+                      Text(project.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14.5,
                               color: SeraTokens.fg1)),
-                      const Gap(3),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.10),
-                            borderRadius:
-                                BorderRadius.circular(SeraTokens.rPill)),
-                        child: Text(note.status,
-                            style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: color)),
+                      if (project.customer?.name != null) ...[
+                        const Gap(2),
+                        Text(project.customer!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12, color: SeraTokens.fg3)),
+                      ],
+                    ],
+                  ),
+                ),
+                const Gap(8),
+                _StatusBadge(project.status),
+              ]),
+
+              const Gap(10),
+              const Divider(height: 1),
+              const Gap(10),
+
+              // ── Row 2: stats ────────────────────────────────────────
+              Wrap(
+                spacing: 14,
+                runSpacing: 6,
+                children: [
+                  _InfoChip(
+                    icon: Icons.description_rounded,
+                    label: '${project.notesCount} note${project.notesCount == 1 ? '' : 's'}',
+                    color: SeraTokens.statusInProgress,
+                  ),
+                  _InfoChip(
+                    icon: Icons.change_circle_outlined,
+                    label: '${project.changeRequestCount} CR${project.changeRequestCount == 1 ? '' : 's'}',
+                    color: hasCr ? SeraTokens.statusInProgressWarm : SeraTokens.muted,
+                  ),
+                  if (hasPrd)
+                    _InfoChip(
+                      icon: Icons.verified_rounded,
+                      label: 'PRD Sent',
+                      color: SeraTokens.statusApproved,
+                    ),
+                  if (project.githubIssueUrl != null)
+                    _InfoChip(
+                      icon: Icons.open_in_new_rounded,
+                      label: 'GitHub #${project.githubIssueNumber}',
+                      color: SeraTokens.fg3,
+                      onTap: () => launchUrl(
+                        Uri.parse(project.githubIssueUrl!),
+                        mode: LaunchMode.externalApplication,
                       ),
-                    ]),
+                    ),
+                ],
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: SeraTokens.disabled, size: 18),
+
+              const Gap(8),
+
+              // ── Row 3: description + date ────────────────────────────
+              Row(children: [
+                if (project.shortDescription != null)
+                  Expanded(
+                    child: Text(project.shortDescription!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11.5, color: SeraTokens.muted)),
+                  )
+                else
+                  const Spacer(),
+                const Gap(8),
+                Row(children: [
+                  const Icon(Icons.calendar_today_rounded,
+                      size: 11, color: SeraTokens.muted),
+                  const Gap(4),
+                  Text(dateStr,
+                      style: const TextStyle(
+                          fontSize: 11, color: SeraTokens.muted)),
+                ]),
+              ]),
             ],
           ),
         ),
       ),
     );
   }
+
+  static String _fmtDate(DateTime d) {
+    const m = ['Jan','Feb','Mar','Apr','May','Jun',
+                'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${m[d.month - 1]} ${d.day}, ${d.year}';
+  }
 }
 
-// ── Empty dashboard ───────────────────────────────────────────────────────────
-
-class _EmptyDashboard extends StatelessWidget {
-  const _EmptyDashboard();
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  const _StatusBadge(this.status);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-              color: SeraTokens.primaryLight,
-              borderRadius: BorderRadius.circular(SeraTokens.rLogo)),
-          child: const Icon(Icons.auto_awesome_rounded,
-              size: 38, color: SeraTokens.primary),
-        ),
-        const Gap(18),
-        const Text('Welcome to SELISE Elicitation & Requirement Agent',
-            style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: SeraTokens.fg1,
-                letterSpacing: -0.2)),
-        const Gap(8),
-        const Text(
-            'Start by adding a Customer, then create\na Project to begin your BRD pipeline.',
-            style: TextStyle(
-                color: SeraTokens.fg3, fontSize: 13.5, height: 1.5),
-            textAlign: TextAlign.center),
-      ],
+    final color = status == 'Active' ? SeraTokens.statusApproved
+        : status == 'Archived' ? SeraTokens.muted
+        : SeraTokens.statusInProgressWarm;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(SeraTokens.rPill),
+      ),
+      child: Text(status,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+              color: color)),
     );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
+  const _InfoChip({required this.icon, required this.label,
+      required this.color, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final chip = Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: color),
+      const Gap(4),
+      Text(label, style: TextStyle(fontSize: 11.5,
+          fontWeight: FontWeight.w600, color: color)),
+    ]);
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: chip);
+    }
+    return chip;
   }
 }

@@ -32,6 +32,7 @@ class Project {
   final String status;
   final bool hasSentPrd;
   final int notesCount;
+  final int changeRequestCount;
   final DateTime createdAt;
 
   Project.fromJson(Map<String, dynamic> j)
@@ -49,6 +50,7 @@ class Project {
         status = (j['status'] as String?) ?? 'Active',
         hasSentPrd = (j['has_sent_prd'] as bool?) ?? false,
         notesCount = (j['notes_count'] as int?) ?? 0,
+        changeRequestCount = (j['change_request_count'] as int?) ?? 0,
         createdAt = DateTime.parse(j['created_at'] as String);
 }
 
