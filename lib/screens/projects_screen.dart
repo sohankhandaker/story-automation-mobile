@@ -28,6 +28,7 @@ class Project {
   final String? githubIssueUrl;
   final int? githubIssueNumber;
   final String status;
+  final bool hasSentPrd;
   final int notesCount;
   final DateTime createdAt;
 
@@ -44,6 +45,7 @@ class Project {
         githubIssueUrl = j['github_issue_url'] as String?,
         githubIssueNumber = j['github_issue_number'] as int?,
         status = (j['status'] as String?) ?? 'Active',
+        hasSentPrd = (j['has_sent_prd'] as bool?) ?? false,
         notesCount = (j['notes_count'] as int?) ?? 0,
         createdAt = DateTime.parse(j['created_at'] as String);
 }
@@ -141,12 +143,13 @@ class _ProjectNotesNotifier
     }
   }
 
-  Future<MeetingNote?> createNote(String rawNotes, String? wikiUrl) async {
+  Future<MeetingNote?> createNote(String rawNotes, String? wikiUrl, {String noteType = 'note'}) async {
     try {
       final resp =
           await ApiClient.dio.post('/api/projects/$projectId/notes', data: {
         'raw_notes': rawNotes,
         if (wikiUrl != null && wikiUrl.isNotEmpty) 'wiki_url': wikiUrl,
+        'note_type': noteType,
       });
       final note = MeetingNote.fromJson(resp.data as Map<String, dynamic>);
       await fetch();
@@ -696,12 +699,14 @@ class ProjectDetailScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddNoteSheet(context, ref),
-        backgroundColor: SeraTokens.primary,
+        onPressed: () => _showAddNoteSheet(context, ref, isChangeRequest: project.hasSentPrd),
+        backgroundColor: project.hasSentPrd ? SeraTokens.statusInProgressWarm : SeraTokens.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Notes',
-            style: TextStyle(fontWeight: FontWeight.w600)),
+        icon: Icon(project.hasSentPrd ? Icons.change_circle_outlined : Icons.add_rounded),
+        label: Text(
+          project.hasSentPrd ? 'Change Request' : 'Add Notes',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
       ),
       body: CustomScrollView(
         slivers: [
@@ -779,12 +784,12 @@ class ProjectDetailScreen extends ConsumerWidget {
     );
   }
 
-  void _showAddNoteSheet(BuildContext context, WidgetRef ref) {
+  void _showAddNoteSheet(BuildContext context, WidgetRef ref, {bool isChangeRequest = false}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ProjectNoteSheet(projectId: project.id),
+      builder: (_) => _ProjectNoteSheet(projectId: project.id, isChangeRequest: isChangeRequest),
     );
   }
 
@@ -992,7 +997,8 @@ class _ProjAttachedFile {
 
 class _ProjectNoteSheet extends ConsumerStatefulWidget {
   final String projectId;
-  const _ProjectNoteSheet({required this.projectId});
+  final bool isChangeRequest;
+  const _ProjectNoteSheet({required this.projectId, this.isChangeRequest = false});
 
   @override
   ConsumerState<_ProjectNoteSheet> createState() => _ProjectNoteSheetState();
@@ -1110,6 +1116,30 @@ class _ProjectNoteSheetState extends ConsumerState<_ProjectNoteSheet> {
         .add(_ProjAttachedFile(name: f.name, bytes: f.bytes!, isImage: false)));
   }
 
+  bool _enhancing = false;
+
+  Future<void> _enhanceAgainstPrd() async {
+    final raw = _notesCtrl.text.trim();
+    if (raw.isEmpty) return;
+    setState(() => _enhancing = true);
+    try {
+      final resp = await ApiClient.dio.post(
+        '/api/projects/${widget.projectId}/enhance-against-prd',
+        data: {'raw_text': raw},
+      );
+      final enhanced = resp.data['enhanced_text'] as String;
+      _notesCtrl.text = enhanced;
+      _notesCtrl.selection = TextSelection.collapsed(offset: enhanced.length);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enhancement failed — try again')),
+        );
+      }
+    }
+    if (mounted) setState(() => _enhancing = false);
+  }
+
   Future<void> _submit() async {
     final raw = _notesCtrl.text.trim();
     if (raw.isEmpty) return;
@@ -1119,7 +1149,10 @@ class _ProjectNoteSheetState extends ConsumerState<_ProjectNoteSheet> {
     final note = await ref
         .read(projectNotesProvider(widget.projectId).notifier)
         .createNote(
-            raw, _wikiUrls.isEmpty ? null : _wikiUrls.join('\n'));
+            raw,
+            _wikiUrls.isEmpty ? null : _wikiUrls.join('\n'),
+            noteType: widget.isChangeRequest ? 'change_request' : 'note',
+        );
 
     if (note != null && _attachments.isNotEmpty) {
       for (final a in _attachments) {
@@ -1178,14 +1211,21 @@ class _ProjectNoteSheetState extends ConsumerState<_ProjectNoteSheet> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: SeraTokens.primaryLight,
+                  color: widget.isChangeRequest
+                      ? SeraTokens.statusInProgressWarm.withValues(alpha: 0.12)
+                      : SeraTokens.primaryLight,
                   borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.note_add_rounded,
-                  color: SeraTokens.primary, size: 20),
+              child: Icon(
+                widget.isChangeRequest ? Icons.change_circle_outlined : Icons.note_add_rounded,
+                color: widget.isChangeRequest ? SeraTokens.statusInProgressWarm : SeraTokens.primary,
+                size: 20,
+              ),
             ),
             const Gap(10),
-            const Text('Add Meeting Notes',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text(
+              widget.isChangeRequest ? 'Change Request' : 'Add Meeting Notes',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
           ]),
           const Gap(16),
           Stack(children: [
@@ -1242,6 +1282,27 @@ class _ProjectNoteSheetState extends ConsumerState<_ProjectNoteSheet> {
                 ),
               ),
             ]),
+          ],
+          if (widget.isChangeRequest) ...[
+            const Gap(8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _enhancing ? null : _enhanceAgainstPrd,
+                icon: _enhancing
+                    ? const SizedBox(
+                        width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_fix_high_rounded, size: 16),
+                label: Text(_enhancing ? 'Enhancing…' : 'Enhance against PRD'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: SeraTokens.statusInProgressWarm,
+                  side: const BorderSide(color: SeraTokens.statusInProgressWarm),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ],
           const Gap(10),
           Row(children: [

@@ -80,6 +80,7 @@ class ReviewerStatus {
 class MeetingNote {
   final String id;
   final String? title;
+  final String noteType;
   final String rawNotes;
   final String? wikiUrl;
   final String? brdDraft;
@@ -98,6 +99,7 @@ class MeetingNote {
   MeetingNote.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
         title = j['title'] as String?,
+        noteType = (j['note_type'] as String?) ?? 'note',
         rawNotes = j['raw_notes'] as String,
         wikiUrl = j['wiki_url'] as String?,
         brdDraft = j['brd_draft'] as String?,
@@ -466,6 +468,7 @@ class NoteCard extends ConsumerWidget {
     final isWorking =
         note.brdGenerationPhase != null || note.status == 'In Progress';
     final isDone = note.brdDraft != null && !isWorking;
+    final isCR = note.noteType == 'change_request';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -482,18 +485,24 @@ class NoteCard extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isDone
-                      ? SeraTokens.statusApproved.withValues(alpha: 0.12)
-                      : kPrimaryLight,
+                  color: isCR
+                      ? SeraTokens.statusInProgressWarm.withValues(alpha: 0.12)
+                      : isDone
+                          ? SeraTokens.statusApproved.withValues(alpha: 0.12)
+                          : kPrimaryLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  isDone
-                      ? Icons.description_rounded
-                      : isWorking
-                          ? Icons.hourglass_top_rounded
-                          : Icons.note_alt_outlined,
-                  color: isDone ? SeraTokens.statusApproved : kPrimary,
+                  isCR
+                      ? Icons.change_circle_outlined
+                      : isDone
+                          ? Icons.description_rounded
+                          : isWorking
+                              ? Icons.hourglass_top_rounded
+                              : Icons.note_alt_outlined,
+                  color: isCR
+                      ? SeraTokens.statusInProgressWarm
+                      : isDone ? SeraTokens.statusApproved : kPrimary,
                   size: 22,
                 ),
               ),
@@ -502,12 +511,36 @@ class NoteCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      note.title ?? 'Processing…',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 14),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        if (isCR) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: SeraTokens.statusInProgressWarm.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Change Request',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: SeraTokens.statusInProgressWarm,
+                              ),
+                            ),
+                          ),
+                          const Gap(6),
+                        ],
+                        Expanded(
+                          child: Text(
+                            note.title ?? 'Processing…',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     const Gap(4),
                     Row(
