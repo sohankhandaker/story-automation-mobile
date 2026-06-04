@@ -729,7 +729,11 @@ class ProjectDetailScreen extends ConsumerWidget {
         ),
         data: (notes) {
           final regularNotes = notes.where((n) => n.noteType != 'change_request').toList();
-          final crNotes = notes.where((n) => n.noteType == 'change_request').toList();
+          // All CRs newest first
+          final crNotes = notes
+              .where((n) => n.noteType == 'change_request')
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
           final approvedPrd = regularNotes.where(
             (n) => n.prdStatus == 'Sent to Planner').toList();
 
