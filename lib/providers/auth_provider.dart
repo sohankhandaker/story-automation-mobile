@@ -118,6 +118,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(error: null);
   }
 
+  Future<bool> loginWithToken(String token) async {
+    try {
+      await AppStorage.saveToken(token);
+      final resp = await ApiClient.dio.get('/api/auth/me');
+      final user = User.fromJson(resp.data as Map<String, dynamic>);
+      await AppStorage.saveUser(jsonEncode(resp.data));
+      state = AuthState(user: user);
+      return true;
+    } catch (_) {
+      await AppStorage.clear();
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     await AppStorage.clear();
     state = AuthState();
