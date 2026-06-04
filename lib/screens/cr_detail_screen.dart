@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -409,7 +410,41 @@ class _CrDetailScreenState extends ConsumerState<CrDetailScreen> {
               ),
             ],
 
-            if (_isClosed)
+            // ── Open ticket + Copy ───────────────────────────────────
+            Row(children: [
+              if (_note.githubIssueUrl != null) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _launchUrl(_note.githubIssueUrl!),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                    label: const Text('Open Ticket'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const Gap(10),
+              ],
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    final content = _note.brdDraft ?? _note.rawNotes;
+                    Clipboard.setData(ClipboardData(text: content));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Copied to clipboard')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('Copy'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ]),
+
+            if (_isClosed) ...[
+              const Gap(12),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -427,6 +462,7 @@ class _CrDetailScreenState extends ConsumerState<CrDetailScreen> {
                   ),
                 ]),
               ),
+            ],
           ],
         ),
       ),

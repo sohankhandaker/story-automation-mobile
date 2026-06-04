@@ -1894,12 +1894,12 @@ class _CrCardState extends ConsumerState<_CrCard> {
                 ],
               ]),
 
-              // ── Action buttons (not Closed) ─────────────────────────
+              // ── Action buttons ───────────────────────────────────────
               const Gap(10),
               const Divider(height: 1),
               const Gap(8),
+              // Row 1: See Summary + Enhance against PRD
               Row(children: [
-                // See Summary
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _showSummary,
@@ -1911,9 +1911,8 @@ class _CrCardState extends ConsumerState<_CrCard> {
                     ),
                   ),
                 ),
-                const Gap(8),
-                // Enhance against PRD (hidden when Closed)
-                if (!_isClosed)
+                if (!_isClosed) ...[
+                  const Gap(8),
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: _enhancing ? null : _enhanceAgainstPrd,
@@ -1930,6 +1929,44 @@ class _CrCardState extends ConsumerState<_CrCard> {
                       ),
                     ),
                   ),
+                ],
+              ]),
+              // Row 2: Open ticket + Copy
+              const Gap(6),
+              Row(children: [
+                if (_note.githubIssueUrl != null)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.parse(_note.githubIssueUrl!),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                      label: const Text('Open Ticket'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                if (_note.githubIssueUrl != null) const Gap(8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      final content = _note.brdDraft ?? _note.rawNotes;
+                      Clipboard.setData(ClipboardData(text: content));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Copied to clipboard')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 14),
+                    label: const Text('Copy'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
               ]),
             ],
           ),
