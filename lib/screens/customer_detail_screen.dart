@@ -223,16 +223,22 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
             onPressed: () async {
               Navigator.pop(context);
               final messenger = ScaffoldMessenger.of(context);
-              final ok = await ref
-                  .read(projectsProvider.notifier)
-                  .delete(project.id);
-              if (ok && mounted) {
-                ref
-                    .read(customerProjectsProvider(widget.customer.id)
-                        .notifier)
-                    .fetch();
+              try {
+                await ref.read(projectsProvider.notifier).delete(project.id);
+                if (mounted) {
+                  ref
+                      .read(customerProjectsProvider(widget.customer.id).notifier)
+                      .fetch();
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Project deleted')),
+                  );
+                }
+              } catch (e) {
                 messenger.showSnackBar(
-                  const SnackBar(content: Text('Project deleted')),
+                  SnackBar(
+                    content: Text(e.toString().replaceFirst('Exception: ', '')),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               }
             },

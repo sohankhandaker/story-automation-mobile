@@ -84,13 +84,13 @@ class CustomersNotifier extends StateNotifier<AsyncValue<List<Customer>>> {
     }
   }
 
-  Future<bool> delete(String id) async {
+  Future<void> delete(String id) async {
     try {
       await ApiClient.dio.delete('/api/customers/$id');
       await fetch();
-      return true;
-    } catch (_) {
-      return false;
+    } on DioException catch (e) {
+      final detail = (e.response?.data as Map?)?['detail'] as String?;
+      throw Exception(detail ?? 'Failed to delete customer');
     }
   }
 }
@@ -177,8 +177,19 @@ class CustomersTab extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(context);
-              final ok = await ref.read(customersProvider.notifier).delete(customer.id);
-              if (ok) onDeleted?.call();
+              try {
+                await ref.read(customersProvider.notifier).delete(customer.id);
+                onDeleted?.call();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString().replaceFirst('Exception: ', '')),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Delete'),
           ),

@@ -72,13 +72,13 @@ class ProjectsNotifier extends StateNotifier<AsyncValue<List<Project>>> {
     }
   }
 
-  Future<bool> delete(String projectId) async {
+  Future<void> delete(String projectId) async {
     try {
       await ApiClient.dio.delete('/api/projects/$projectId');
       await fetch();
-      return true;
-    } catch (_) {
-      return false;
+    } on DioException catch (e) {
+      final detail = (e.response?.data as Map?)?['detail'] as String?;
+      throw Exception(detail ?? 'Failed to delete project');
     }
   }
 
@@ -804,14 +804,23 @@ class ProjectDetailScreen extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(context); // close dialog
-              final ok = await ref
-                  .read(projectsProvider.notifier)
-                  .delete(project.id);
-              if (ok && context.mounted) {
-                Navigator.pop(context); // go back to customer detail
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Project deleted')),
-                );
+              try {
+                await ref.read(projectsProvider.notifier).delete(project.id);
+                if (context.mounted) {
+                  Navigator.pop(context); // go back to customer detail
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Project deleted')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString().replaceFirst('Exception: ', '')),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('Delete'),
