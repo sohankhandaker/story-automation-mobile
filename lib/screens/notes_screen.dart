@@ -101,6 +101,7 @@ class MeetingNote {
   final String? prdFileUrl;
   final String? prdFileRawUrl;
   final DateTime createdAt;
+  final DateTime updatedAt;
 
   MeetingNote.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
@@ -128,7 +129,9 @@ class MeetingNote {
         prdVersionNumber = j['prd_version_number'] as int?,
         prdFileUrl = j['prd_file_url'] as String?,
         prdFileRawUrl = j['prd_file_raw_url'] as String?,
-        createdAt = DateTime.parse(j['created_at'] as String);
+        createdAt = DateTime.parse(j['created_at'] as String),
+        updatedAt = DateTime.parse(
+            (j['updated_at'] ?? j['created_at']) as String);
 }
 
 class NoteEntry {
@@ -386,11 +389,13 @@ final notesProvider =
 
 class _StatusChip extends StatelessWidget {
   final String status;
-  const _StatusChip(this.status);
+  final int? version;
+  const _StatusChip(this.status, {this.version});
 
   @override
   Widget build(BuildContext context) {
     final color = _statusColors[status] ?? SeraTokens.statusDraft;
+    final label = version != null ? 'v$version · $status' : status;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -399,9 +404,8 @@ class _StatusChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
-        status,
-        style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }
@@ -2169,21 +2173,47 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
   }
 
   PreferredSizeWidget _buildAppBar() {
-    // Determine title
-    final title = _isDraft
-        ? (_note.title == 'New Note' ? 'Meeting Notes' : (_note.title ?? 'Meeting Notes'))
-        : _isWorking
-            ? 'Generating BRD…'
-            : _phase == 'prd' && _prdIsWorking
-                ? 'Generating PRD…'
-                : (_note.title ?? (_phase == 'prd' ? 'PRD' : 'BRD'));
+    Widget titleWidget;
+
+    if (_isDraft) {
+      final t = _note.title == 'New Note' ? 'Meeting Notes' : (_note.title ?? 'Meeting Notes');
+      titleWidget = Text(t,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          overflow: TextOverflow.ellipsis);
+    } else if (_isWorking) {
+      titleWidget = const Text('Generating BRD…',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
+    } else if (_phase == 'prd' && _prdIsWorking) {
+      titleWidget = const Text('Generating PRD…',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
+    } else if (_phase == 'prd' && _prd != null) {
+      titleWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_note.title ?? 'PRD',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              overflow: TextOverflow.ellipsis),
+          Text('PRD · v${_prd!.currentVersionNumber} · ${_prd!.status}',
+              style: const TextStyle(fontSize: 11, color: SeraTokens.muted)),
+        ],
+      );
+    } else {
+      titleWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_note.title ?? 'BRD',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              overflow: TextOverflow.ellipsis),
+          Text('BRD · v${_note.currentVersionNumber} · ${_note.status}',
+              style: const TextStyle(fontSize: 11, color: SeraTokens.muted)),
+        ],
+      );
+    }
 
     return AppBar(
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: titleWidget,
       actions: [
         // Mark as Ready — Draft state
         if (_isDraft)
@@ -2195,7 +2225,7 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
 
         // ── BRD phase actions ─────────────────────────────────────────────
         if (_brdReady && _phase == 'brd') ...[
-          _StatusChip(_note.status),
+          _StatusChip(_note.status, version: _note.currentVersionNumber),
           const Gap(2),
           if (_note.githubIssueUrl != null)
             IconButton(
@@ -2250,7 +2280,7 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
 
         // ── PRD phase actions ─────────────────────────────────────────────
         if (_phase == 'prd' && _prd != null && !_prdIsWorking) ...[
-          _StatusChip(_prd!.status),
+          _StatusChip(_prd!.status, version: _prd!.currentVersionNumber),
           const Gap(2),
           if (_prd!.githubIssueUrl != null)
             IconButton(
@@ -2966,13 +2996,23 @@ class _BrdDraftTab extends StatelessWidget {
               ),
             ),
           ),
+        // Dynamic Document Control — overrides any static version in the generated markdown
+        SliverToBoxAdapter(
+          child: DocControlCard(
+            docType: 'BRD',
+            version: note.currentVersionNumber,
+            status: note.status,
+            updatedAt: note.updatedAt,
+            reviewer: note.reviewerName ?? note.reviewerGithubUsername,
+          ),
+        ),
         SliverToBoxAdapter(
           child: Markdown(
             data: note.brdDraft ?? '',
             selectable: true,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             styleSheet: MarkdownStyleSheet(
               h1: const TextStyle(
                   fontSize: 20, fontWeight: FontWeight.bold),
@@ -2991,6 +3031,112 @@ class _BrdDraftTab extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// ── Dynamic Document Control card ────────────────────────────────────────────
+
+class DocControlCard extends StatelessWidget {
+  final String docType;      // 'BRD' or 'PRD'
+  final int version;
+  final String status;
+  final DateTime updatedAt;
+  final String? reviewer;
+
+  const DocControlCard({
+    required this.docType,
+    required this.version,
+    required this.status,
+    required this.updatedAt,
+    this.reviewer,
+  });
+
+  static String _fmt(DateTime d) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColors[status] ?? SeraTokens.statusDraft;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      decoration: BoxDecoration(
+        color: SeraTokens.surfaceBlue,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: SeraTokens.borderBlue),
+      ),
+      child: Column(
+        children: [
+          // Header row
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            decoration: BoxDecoration(
+              color: SeraTokens.primary.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.article_rounded, size: 14, color: SeraTokens.primary),
+              const Gap(6),
+              Text('$docType — Document Control',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 12,
+                      color: SeraTokens.primary)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                child: Text(status,
+                    style: TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+              ),
+            ]),
+          ),
+          // Meta rows
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            child: Column(
+              children: [
+                DocControlRow(label: 'Version', value: 'v$version'),
+                const Gap(6),
+                DocControlRow(label: 'Last Updated', value: _fmt(updatedAt)),
+                if (reviewer != null) ...[
+                  const Gap(6),
+                  DocControlRow(label: 'Reviewer', value: reviewer!),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DocControlRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const DocControlRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      SizedBox(
+        width: 90,
+        child: Text(label,
+            style: const TextStyle(
+                fontSize: 11.5, color: SeraTokens.muted, fontWeight: FontWeight.w600)),
+      ),
+      Expanded(
+        child: Text(value,
+            style: const TextStyle(fontSize: 11.5, color: SeraTokens.fg1)),
+      ),
+    ]);
   }
 }
 

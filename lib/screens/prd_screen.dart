@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app.dart';
 import '../core/api.dart';
 import 'shared_widgets.dart' show GenerationProgressWidget;
+import 'notes_screen.dart' show DocControlCard;
 import '../models/user.dart';
 import '../providers/auth_provider.dart';
 
@@ -287,11 +288,13 @@ final prdProvider = StateNotifierProvider.family<PrdNotifier,
 
 class _PrdStatusChip extends StatelessWidget {
   final String status;
-  const _PrdStatusChip(this.status);
+  final int? version;
+  const _PrdStatusChip(this.status, {this.version});
 
   @override
   Widget build(BuildContext context) {
     final color = _prdStatusColors[status] ?? const Color(0xFF78909C);
+    final label = version != null ? 'v$version · $status' : status;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -300,9 +303,8 @@ class _PrdStatusChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
-        status,
-        style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }
@@ -690,7 +692,7 @@ class _PrdDetailScreenState extends ConsumerState<_PrdDetailScreen>
       ),
       actions: [
         if (_prdReady) ...[
-          _PrdStatusChip(_prd.status),
+          _PrdStatusChip(_prd.status, version: _prd.currentVersionNumber),
           const Gap(2),
           if (_prd.githubIssueUrl != null)
             IconButton(
@@ -957,13 +959,23 @@ class PrdContentTab extends ConsumerWidget {
               ),
             ),
           ),
+        // Dynamic Document Control — always current from backend
+        SliverToBoxAdapter(
+          child: DocControlCard(
+            docType: 'PRD',
+            version: prd.currentVersionNumber,
+            status: prd.status,
+            updatedAt: prd.updatedAt,
+            reviewer: prd.reviewerName ?? prd.reviewerGithubUsername,
+          ),
+        ),
         SliverToBoxAdapter(
           child: Markdown(
             data: prd.prdDraft ?? '',
             selectable: true,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             styleSheet: MarkdownStyleSheet(
               h1: const TextStyle(
                   fontSize: 20, fontWeight: FontWeight.bold),
