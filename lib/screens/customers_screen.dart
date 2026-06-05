@@ -101,13 +101,27 @@ final customersProvider =
 
 // ── Customers tab ─────────────────────────────────────────────────────────────
 
-class CustomersTab extends ConsumerWidget {
+class CustomersTab extends ConsumerStatefulWidget {
   final void Function(Customer)? onCustomerTap;
   final VoidCallback? onDeleted;
   const CustomersTab({super.key, this.onCustomerTap, this.onDeleted});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomersTab> createState() => _CustomersTabState();
+}
+
+class _CustomersTabState extends ConsumerState<CustomersTab> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final customersAsync = ref.watch(customersProvider);
 
     return customersAsync.when(
@@ -129,26 +143,55 @@ class CustomersTab extends ConsumerWidget {
           ],
         ),
       ),
-      data: (customers) => RefreshIndicator(
-        onRefresh: () => ref.read(customersProvider.notifier).fetch(),
-        child: customers.isEmpty
-            ? const _EmptyState()
-            : ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                itemCount: customers.length,
-                separatorBuilder: (_, __) => const Gap(10),
-                itemBuilder: (_, i) => _CustomerCard(
-                  customer: customers[i],
-                  onTap: onCustomerTap != null
-                      ? () => onCustomerTap!(customers[i])
-                      : null,
-                  onEdit: () => _showSheet(context, ref, customers[i]),
-                  onDelete: () => _confirmDelete(context, ref, customers[i]),
+      data: (customers) {
+        final filtered = _filter(customers, _query);
+        return RefreshIndicator(
+          onRefresh: () => ref.read(customersProvider.notifier).fetch(),
+          child: customers.isEmpty
+              ? const _EmptyState()
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: _SearchField(
+                        controller: _searchCtrl,
+                        hint: 'Search customers',
+                        onChanged: (v) => setState(() => _query = v),
+                      ),
+                    ),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const _NoResults(label: 'No customers match your search')
+                          : ListView.separated(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) => const Gap(10),
+                              itemBuilder: (_, i) => _CustomerCard(
+                                customer: filtered[i],
+                                onTap: widget.onCustomerTap != null
+                                    ? () => widget.onCustomerTap!(filtered[i])
+                                    : null,
+                                onEdit: () => _showSheet(context, ref, filtered[i]),
+                                onDelete: () => _confirmDelete(context, ref, filtered[i]),
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
-              ),
-      ),
+        );
+      },
     );
+  }
+
+  List<Customer> _filter(List<Customer> items, String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items.where((c) {
+      return c.name.toLowerCase().contains(q) ||
+          (c.url ?? '').toLowerCase().contains(q) ||
+          (c.shortDescription ?? '').toLowerCase().contains(q);
+    }).toList();
   }
 
   void _showSheet(BuildContext context, WidgetRef ref, Customer? existing) {
@@ -179,7 +222,7 @@ class CustomersTab extends ConsumerWidget {
               Navigator.pop(context);
               try {
                 await ref.read(customersProvider.notifier).delete(customer.id);
-                onDeleted?.call();
+                widget.onDeleted?.call();
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -576,6 +619,86 @@ class _EmptyState extends StatelessWidget {
                 color: SeraTokens.fg3,
                 fontSize: 13.5,
                 height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reusable search bar + empty-results widgets ───────────────────────────────
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  const _SearchField({
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: BorderSide(color: SeraTokens.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: BorderSide(color: SeraTokens.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: const BorderSide(color: SeraTokens.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoResults extends StatelessWidget {
+  final String label;
+  const _NoResults({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded,
+                size: 42, color: SeraTokens.fg3),
+            const Gap(10),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: SeraTokens.fg3,
+                fontSize: 13.5,
               ),
             ),
           ],

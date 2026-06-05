@@ -166,11 +166,36 @@ class _ProjectNotesNotifier
 
 // ── Projects tab ──────────────────────────────────────────────────────────────
 
-class ProjectsTab extends ConsumerWidget {
+class ProjectsTab extends ConsumerStatefulWidget {
   const ProjectsTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProjectsTab> createState() => _ProjectsTabState();
+}
+
+class _ProjectsTabState extends ConsumerState<ProjectsTab> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<Project> _filter(List<Project> items) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items.where((p) {
+      return p.title.toLowerCase().contains(q) ||
+          p.clientName.toLowerCase().contains(q) ||
+          (p.shortDescription ?? '').toLowerCase().contains(q) ||
+          p.status.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final projectsAsync = ref.watch(projectsProvider);
 
     return projectsAsync.when(
@@ -192,18 +217,40 @@ class ProjectsTab extends ConsumerWidget {
           ],
         ),
       ),
-      data: (projects) => RefreshIndicator(
-        onRefresh: () => ref.read(projectsProvider.notifier).fetch(),
-        child: projects.isEmpty
-            ? const _ProjectsEmptyState()
-            : ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                itemCount: projects.length,
-                separatorBuilder: (_, __) => const Gap(12),
-                itemBuilder: (_, i) => _ProjectCard(project: projects[i]),
-              ),
-      ),
+      data: (projects) {
+        final filtered = _filter(projects);
+        return RefreshIndicator(
+          onRefresh: () => ref.read(projectsProvider.notifier).fetch(),
+          child: projects.isEmpty
+              ? const _ProjectsEmptyState()
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: _SearchField(
+                        controller: _searchCtrl,
+                        hint: 'Search projects',
+                        onChanged: (v) => setState(() => _query = v),
+                      ),
+                    ),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const _NoResults(
+                              label: 'No projects match your search')
+                          : ListView.separated(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) => const Gap(12),
+                              itemBuilder: (_, i) =>
+                                  _ProjectCard(project: filtered[i]),
+                            ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -640,12 +687,39 @@ class _NewProjectSheetState extends ConsumerState<NewProjectSheet> {
 
 // ── Project detail screen ─────────────────────────────────────────────────────
 
-class ProjectDetailScreen extends ConsumerWidget {
+class ProjectDetailScreen extends ConsumerStatefulWidget {
   final Project project;
   const ProjectDetailScreen({super.key, required this.project});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProjectDetailScreen> createState() =>
+      _ProjectDetailScreenState();
+}
+
+class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  Project get project => widget.project;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<MeetingNote> _filterNotes(List<MeetingNote> items) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items.where((n) {
+      return (n.title ?? '').toLowerCase().contains(q) ||
+          n.rawNotes.toLowerCase().contains(q) ||
+          n.status.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notesAsync = ref.watch(projectNotesProvider(project.id));
 
     return Scaffold(
@@ -739,11 +813,26 @@ class ProjectDetailScreen extends ConsumerWidget {
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
           final approvedPrd = regularNotes.where(
             (n) => n.prdStatus == 'Sent to Planner').toList();
+          final filteredRegular = _filterNotes(regularNotes);
+          final filteredCr = _filterNotes(crNotes);
+          final showSearch = (regularNotes.length + crNotes.length) > 0;
 
           return CustomScrollView(
             slivers: [
               SliverToBoxAdapter(child: _ProjectInfoCard(project: project)),
               const SliverToBoxAdapter(child: Gap(4)),
+
+              if (showSearch)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: _SearchField(
+                      controller: _searchCtrl,
+                      hint: 'Search notes & change requests',
+                      onChanged: (v) => setState(() => _query = v),
+                    ),
+                  ),
+                ),
 
               // ── Meeting Notes & BRDs ──────────────────────────────
               SliverToBoxAdapter(
@@ -756,7 +845,7 @@ class ProjectDetailScreen extends ConsumerWidget {
                         style: TextStyle(fontWeight: FontWeight.w700,
                             fontSize: 13, color: SeraTokens.fg1)),
                     const Spacer(),
-                    Text('${regularNotes.length}',
+                    Text('${filteredRegular.length}',
                         style: const TextStyle(fontSize: 12, color: SeraTokens.muted)),
                   ]),
                 ),
@@ -768,13 +857,20 @@ class ProjectDetailScreen extends ConsumerWidget {
                     child: _NotesEmptyState(),
                   ),
                 )
+              else if (filteredRegular.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: _NoResults(label: 'No notes match your search'),
+                  ),
+                )
               else
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   sliver: SliverList.separated(
-                    itemCount: regularNotes.length,
+                    itemCount: filteredRegular.length,
                     separatorBuilder: (_, __) => const Gap(10),
-                    itemBuilder: (_, i) => NoteCard(note: regularNotes[i]),
+                    itemBuilder: (_, i) => NoteCard(note: filteredRegular[i]),
                   ),
                 ),
 
@@ -824,7 +920,7 @@ class ProjectDetailScreen extends ConsumerWidget {
                           style: TextStyle(fontWeight: FontWeight.w700,
                               fontSize: 13, color: SeraTokens.fg1)),
                       const Spacer(),
-                      Text('${crNotes.length}',
+                      Text('${filteredCr.length}',
                           style: const TextStyle(fontSize: 12, color: SeraTokens.muted)),
                     ]),
                   ),
@@ -838,13 +934,20 @@ class ProjectDetailScreen extends ConsumerWidget {
                           style: TextStyle(fontSize: 13, color: SeraTokens.muted)),
                     ),
                   )
+                else if (filteredCr.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: _NoResults(label: 'No change requests match your search'),
+                    ),
+                  )
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                     sliver: SliverList.separated(
-                      itemCount: crNotes.length,
+                      itemCount: filteredCr.length,
                       separatorBuilder: (_, __) => const Gap(10),
-                      itemBuilder: (_, i) => _CrCard(note: crNotes[i], projectId: project.id),
+                      itemBuilder: (_, i) => _CrCard(note: filteredCr[i], projectId: project.id),
                     ),
                   ),
               ] else
@@ -2069,6 +2172,86 @@ class _CrSummarySheet extends StatelessWidget {
                         ],
                       ),
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reusable search + no-results widgets ──────────────────────────────────────
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  const _SearchField({
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: BorderSide(color: SeraTokens.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: BorderSide(color: SeraTokens.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: const BorderSide(color: SeraTokens.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoResults extends StatelessWidget {
+  final String label;
+  const _NoResults({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded,
+                size: 38, color: SeraTokens.fg3),
+            const Gap(8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: SeraTokens.fg3,
+                fontSize: 13,
+              ),
             ),
           ],
         ),

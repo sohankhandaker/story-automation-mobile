@@ -54,6 +54,25 @@ class CustomerDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<Project> _filter(List<Project> items) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items.where((p) {
+      return p.title.toLowerCase().contains(q) ||
+          p.clientName.toLowerCase().contains(q) ||
+          (p.shortDescription ?? '').toLowerCase().contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final projectsAsync =
@@ -140,6 +159,17 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
               ),
             ),
           ),
+          if ((projectsAsync.valueOrNull?.length ?? 0) > 0)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: _SearchField(
+                  controller: _searchCtrl,
+                  hint: 'Search projects',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+            ),
           projectsAsync.when(
             loading: () => const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
@@ -167,22 +197,33 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                 ),
               ),
             ),
-            data: (projects) => projects.isEmpty
-                ? const SliverFillRemaining(
-                    child: _ProjectsEmptyState(),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                    sliver: SliverList.separated(
-                      itemCount: projects.length,
-                      separatorBuilder: (_, __) => const Gap(10),
-                      itemBuilder: (_, i) => _ProjectTile(
-                        project: projects[i],
-                        onDelete: () =>
-                            _confirmDeleteProject(context, ref, projects[i]),
-                      ),
-                    ),
+            data: (projects) {
+              if (projects.isEmpty) {
+                return const SliverFillRemaining(
+                  child: _ProjectsEmptyState(),
+                );
+              }
+              final filtered = _filter(projects);
+              if (filtered.isEmpty) {
+                return const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _NoResults(
+                      label: 'No projects match your search'),
+                );
+              }
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                sliver: SliverList.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const Gap(10),
+                  itemBuilder: (_, i) => _ProjectTile(
+                    project: filtered[i],
+                    onDelete: () =>
+                        _confirmDeleteProject(context, ref, filtered[i]),
                   ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -572,6 +613,86 @@ class _ProjectsEmptyState extends StatelessWidget {
                 color: SeraTokens.fg3,
                 fontSize: 13.5,
                 height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reusable search + no-results widgets ──────────────────────────────────────
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  const _SearchField({
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: BorderSide(color: SeraTokens.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: BorderSide(color: SeraTokens.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SeraTokens.rLg),
+          borderSide: const BorderSide(color: SeraTokens.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoResults extends StatelessWidget {
+  final String label;
+  const _NoResults({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded,
+                size: 42, color: SeraTokens.fg3),
+            const Gap(10),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: SeraTokens.fg3,
+                fontSize: 13.5,
               ),
             ),
           ],
