@@ -262,6 +262,20 @@ class PrdNotifier extends StateNotifier<AsyncValue<PrdDocument?>> {
     }
   }
 
+  // TEMPORARY: manual PRD approval for full-flow testing. Remove after testing.
+  Future<PrdDocument?> testApprove(String noteId) async {
+    try {
+      final resp = await ApiClient.dio
+          .post('/api/notes/$noteId/prd/test-approve');
+      final prd =
+          PrdDocument.fromJson(resp.data as Map<String, dynamic>);
+      state = AsyncValue.data(prd);
+      return prd;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void updatePrd(PrdDocument prd) {
     state = AsyncValue.data(prd);
   }
