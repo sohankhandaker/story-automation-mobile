@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -1840,17 +1841,55 @@ class _CrCard extends ConsumerStatefulWidget {
 class _CrCardState extends ConsumerState<_CrCard> {
   late MeetingNote _note;
   bool _enhancing = false;
+  bool _sendingToPlanner = false;
+  Timer? _pollTimer;
+  bool _wasWorking = false;
 
   @override
   void initState() {
     super.initState();
     _note = widget.note;
+    _wasWorking = _isWorking;
+    _schedulePollIfNeeded();
   }
 
   @override
   void didUpdateWidget(_CrCard old) {
     super.didUpdateWidget(old);
-    if (old.note.id == widget.note.id) _note = widget.note;
+    if (old.note.id == widget.note.id) {
+      _note = widget.note;
+      _schedulePollIfNeeded();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  bool get _isWorking => _note.brdGenerationPhase != null || _note.status == 'In Progress';
+
+  Future<void> _refresh() async {
+    try {
+      final resp = await ApiClient.dio.get('/api/notes/${_note.id}');
+      if (!mounted) return;
+      setState(() => _note = MeetingNote.fromJson(resp.data as Map<String, dynamic>));
+    } catch (_) {}
+    _schedulePollIfNeeded();
+  }
+
+  void _schedulePollIfNeeded() {
+    _pollTimer?.cancel();
+    if (!mounted) return;
+    if (_isWorking) {
+      _wasWorking = true;
+      _pollTimer = Timer(const Duration(seconds: 4), _refresh);
+    } else if (_wasWorking) {
+      // Just finished — sync parent provider so other widgets see final state
+      _wasWorking = false;
+      ref.read(projectNotesProvider(widget.projectId).notifier).fetch();
+    }
   }
 
   bool get _isClosed => _note.status == 'Closed';
@@ -1906,6 +1945,50 @@ class _CrCardState extends ConsumerState<_CrCard> {
       backgroundColor: Colors.transparent,
       builder: (_) => _CrSummarySheet(note: _note),
     );
+  }
+
+  // ── Send to Planner ──────────────────────────────────────────────────────
+  Future<void> _sendToPlanner() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Send to Planner'),
+        content: const Text(
+            'This will post the generated summary with a download link to the GitHub ticket and close this Change Request. Continue?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _sendingToPlanner = true);
+    try {
+      final resp = await ApiClient.dio.post('/api/notes/${_note.id}/send-cr-to-planner');
+      if (!mounted) return;
+      setState(() => _note = MeetingNote.fromJson(resp.data as Map<String, dynamic>));
+      _schedulePollIfNeeded();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sending to planner — posting summary to ticket…')),
+      );
+    } on DioException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text((e.response?.data as Map?)?['detail'] as String? ??
+                'Failed to send to planner'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingToPlanner = false);
+    }
   }
 
   @override
@@ -2073,6 +2156,38 @@ class _CrCardState extends ConsumerState<_CrCard> {
                   ),
                 ),
               ]),
+              // Row 3: Send to Planner (always visible until CR is closed)
+              if (!_isClosed) ...[
+                const Gap(6),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: (_sendingToPlanner || _isGenerating || !hasSummary)
+                        ? null
+                        : _sendToPlanner,
+                    icon: _sendingToPlanner
+                        ? const SizedBox(
+                            width: 12, height: 12,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send_rounded, size: 14),
+                    label: Text(
+                      _sendingToPlanner
+                          ? 'Sending…'
+                          : _isGenerating
+                              ? 'Send to Planner (waiting for summary…)'
+                              : !hasSummary
+                                  ? 'Send to Planner (summary required)'
+                                  : 'Send to Planner',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: SeraTokens.statusApproved,
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

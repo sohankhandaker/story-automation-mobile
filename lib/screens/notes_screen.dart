@@ -374,7 +374,10 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
     try {
       await ApiClient.dio.delete('/api/notes/$noteId');
       await fetchNotes();
-    } catch (_) {}
+    } on DioException catch (e) {
+      final detail = (e.response?.data as Map?)?['detail'] as String?;
+      throw Exception(detail ?? 'Failed to delete note');
+    }
   }
 
   Future<void> uploadAttachments(
@@ -635,9 +638,20 @@ class NoteCard extends ConsumerWidget {
               child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ref.read(notesProvider.notifier).deleteNote(note.id);
+              try {
+                await ref.read(notesProvider.notifier).deleteNote(note.id);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString().replaceFirst('Exception: ', '')),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Delete'),
           ),
