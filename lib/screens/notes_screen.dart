@@ -338,16 +338,6 @@ class NotesNotifier extends StateNotifier<AsyncValue<List<MeetingNote>>> {
     }
   }
 
-  // TEMPORARY: manual BRD approval for full-flow testing. Remove after testing.
-  Future<MeetingNote?> testApproveBrd(String noteId) async {
-    try {
-      final resp = await ApiClient.dio.post('/api/notes/$noteId/test-approve');
-      return MeetingNote.fromJson(resp.data as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<List<NoteEntry>> fetchEntries(String noteId) async {
     try {
       final resp = await ApiClient.dio.get('/api/notes/$noteId/entries');
@@ -2144,63 +2134,6 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
     );
   }
 
-  // TEMPORARY: manual approve helpers for full-flow testing. Remove after testing.
-  Future<void> _testApproveBrd() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Approve BRD (Test)'),
-        content: const Text(
-            'This will manually approve the BRD without reviewer action. Use only for testing.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Approve'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final updated = await ref.read(notesProvider.notifier).testApproveBrd(_note.id);
-    if (updated != null && mounted) {
-      setState(() => _note = updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('BRD approved (test)')),
-      );
-    }
-  }
-
-  Future<void> _testApprovePrd() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Approve PRD (Test)'),
-        content: const Text(
-            'This will manually approve the PRD without reviewer action. Use only for testing.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Approve'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final updated = await ref.read(prdProvider(_note.id).notifier).testApprove(_note.id);
-    if (updated != null && mounted) {
-      setState(() => _prd = updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PRD approved (test)')),
-      );
-    }
-  }
-
   Future<void> _sendToPlanner() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -2338,13 +2271,6 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
                 PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_rounded), title: Text('Copy BRD'), contentPadding: EdgeInsets.zero, dense: true)),
               ],
             ),
-          // TEMPORARY: manual BRD approve button for full-flow testing.
-          if (_note.brdDraft != null && _note.status != 'Approved' && _note.status != 'Draft')
-            IconButton(
-              icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 20),
-              tooltip: 'Approve BRD (Test)',
-              onPressed: _testApproveBrd,
-            ),
           if (_note.status == 'Approved') ...[
             if (_note.githubIssueUrl != null)
               IconButton(
@@ -2395,13 +2321,6 @@ class NoteDetailScreenState extends ConsumerState<NoteDetailScreen>
               icon: const Icon(Icons.send_rounded, color: Color(0xFF00897B), size: 20),
               tooltip: 'Send to Planner',
               onPressed: _sendToPlanner,
-            ),
-          // TEMPORARY: manual PRD approve button for full-flow testing.
-          if (_prd!.prdDraft != null && _prd!.status != 'Approved' && _prd!.status != 'Sent to Planner')
-            IconButton(
-              icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 20),
-              tooltip: 'Approve PRD (Test)',
-              onPressed: _testApprovePrd,
             ),
           if (_prd!.prdDraft != null) ...[
             if (_prd!.githubIssueUrl != null)
